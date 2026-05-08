@@ -1,0 +1,13 @@
+{
+  "name": "quorum",
+  "version": "0.1.0",
+  "private": true,
+  "description": "On-chain governance infrastructure for the Stellar and Soroban ecosystem",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "build:sdk": "cd sdk && npm run build",
+    "build:contracts": "cd contracts && cargo build --target wasm32-unknown-unknown --release"
+  },
+  "engines": { "node": ">=18" }
+}
