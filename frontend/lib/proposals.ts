@@ -42,6 +42,44 @@ export const PROPOSALS: Proposal[] = [
     ],
   },
 ];
+  {
+    id: "QIP-003",
+    title: "Emergency Pause of XLM/USDT Pool",
+    description: "An emergency proposal to pause all deposits and withdrawals from the XLM/USDT liquidity pool following the detection of abnormal price oracle behavior on May 2nd. The oracle reported a 14% price deviation over 40 minutes that does not correspond to any observed market movement.\n\nThis pause is a precautionary measure while the technical committee investigates the root cause. Existing LPs will retain their positions and continue to earn accrued fees.",
+    proposer: "GSEC...2RTY",
+    status: "failed",
+    startTime: "2026-05-02T18:00:00Z",
+    endTime: "2026-05-04T18:00:00Z",
+    forVotes: 310000,
+    againstVotes: 580000,
+    abstainVotes: 22000,
+    quorumRequired: 200000,
+    category: "Security",
+    actions: [{ description: "Pause XLM/USDT pool", contractAddress: "CCPOOL...XLM_USDT", functionName: "set_paused" }],
+    votes: [
+      { voter: "GLMN...4OPQ", choice: "against", weight: 280000, timestamp: "2026-05-02T19:00:00Z" },
+      { voter: "GRST...6UVW", choice: "for", weight: 200000, timestamp: "2026-05-03T07:00:00Z" },
+    ],
+  },
+  {
+    id: "QIP-004",
+    title: "Grant 50,000 XLM to Developer Guild",
+    description: "This proposal authorizes a grant of 50,000 XLM from the Quorum Treasury to the Stellar Developer Guild for development of a Quorum SDK and documentation portal.\n\nDeliverables include: a TypeScript SDK for creating and submitting governance proposals, a documentation site, and three integration examples. The grant will be paid in two tranches.",
+    proposer: "GDEV...5MNO",
+    status: "active",
+    startTime: "2026-05-15T00:00:00Z",
+    endTime: "2026-05-22T00:00:00Z",
+    forVotes: 620000,
+    againstVotes: 88000,
+    abstainVotes: 56000,
+    quorumRequired: 400000,
+    category: "Treasury",
+    actions: [{ description: "Transfer 25,000 XLM tranche 1", contractAddress: "CCTREASURY...M2NK", functionName: "transfer" }],
+    votes: [
+      { voter: "GPQR...2STU", choice: "for", weight: 300000, timestamp: "2026-05-15T08:00:00Z" },
+      { voter: "GVWX...4YZA", choice: "for", weight: 200000, timestamp: "2026-05-16T10:00:00Z" },
+    ],
+  },
 
 export function getProposalById(id: string): Proposal | undefined {
   return PROPOSALS.find(p => p.id === id);
