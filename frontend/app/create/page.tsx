@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 
 const CATEGORIES = ["Financial", "Technical", "Treasury", "Governance", "Security", "Community", "Protocol"];
-const DURATIONS = ["3 days", "7 days", "14 days"];
+const DURATIONS = ["3 days", "5 days", "7 days", "14 days", "30 days"];
 
 interface FormState {
   title: string;
