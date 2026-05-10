@@ -119,3 +119,31 @@ impl GovernanceContract {
         env.storage().persistent().set(&DataKey::HasVoted(proposal_id, voter), &support);
         Ok(())
     }
+
+    pub fn finalize(env: Env, proposal_id: u64) -> Result<ProposalStatus, GovernanceError> {
+        let mut proposal: Proposal = env.storage().persistent()
+            .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
+        if env.ledger().sequence() <= proposal.end_ledger { return Err(GovernanceError::VotingNotActive); }
+        let config: Config = env.storage().instance().get(&DataKey::Config).unwrap();
+        let total = proposal.for_votes + proposal.against_votes + proposal.abstain_votes;
+        let quorum_ok = total >= proposal.quorum_required;
+        let majority_for = proposal.for_votes > proposal.against_votes;
+        proposal.status = if quorum_ok && majority_for {
+            proposal.queue_ledger = env.ledger().sequence() + config.timelock_period;
+            ProposalStatus::Queued
+        } else { ProposalStatus::Failed };
+        let status = proposal.status.clone();
+        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        Ok(status)
+    }
+
+    pub fn execute(env: Env, proposal_id: u64) -> Result<(), GovernanceError> {
+        let mut proposal: Proposal = env.storage().persistent()
+            .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
+        if proposal.status != ProposalStatus::Queued { return Err(GovernanceError::ProposalNotPassed); }
+        if env.ledger().sequence() < proposal.queue_ledger { return Err(GovernanceError::TimelockNotExpired); }
+        proposal.status = ProposalStatus::Executed;
+        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        // TODO: dispatch on-chain actions encoded in proposal
+        Ok(())
+    }
