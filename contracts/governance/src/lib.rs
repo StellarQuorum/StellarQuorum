@@ -61,3 +61,19 @@ pub enum DataKey {
     HasVoted(u64, Address),
     Delegate(Address),
 }
+
+#[contract]
+pub struct GovernanceContract;
+
+#[contractimpl]
+impl GovernanceContract {
+    pub fn initialize(env: Env, admin: Address, token: Address, quorum_bps: u32, voting_period: u32, timelock_period: u32, proposal_threshold: i128) -> Result<(), GovernanceError> {
+        if env.storage().instance().has(&DataKey::Config) {
+            return Err(GovernanceError::AlreadyInitialized);
+        }
+        admin.require_auth();
+        let config = Config { token, quorum_bps, voting_period, timelock_period, proposal_threshold, admin };
+        env.storage().instance().set(&DataKey::Config, &config);
+        env.storage().instance().set(&DataKey::ProposalCount, &0u64);
+        Ok(())
+    }
