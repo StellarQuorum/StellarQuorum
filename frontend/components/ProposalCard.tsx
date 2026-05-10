@@ -44,7 +44,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
 
         {total > 0 && (
           <div className="flex gap-4 mt-2 text-xs text-slate-500">
-            <span className="text-emerald-500">{(proposal.forVotes / 1000).toFixed(0)}K For</span>
+            <span className="text-emerald-400">{(proposal.forVotes / 1000).toFixed(0)}K For</span>
             <span className="text-red-400">{(proposal.againstVotes / 1000).toFixed(0)}K Against</span>
           </div>
         )}
