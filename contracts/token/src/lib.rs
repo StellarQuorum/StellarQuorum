@@ -45,3 +45,14 @@ impl QuorumToken {
     pub fn total_supply(env: Env) -> i128 {
         env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)
     }
+
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), TokenError> {
+        from.require_auth();
+        if amount <= 0 { return Err(TokenError::InvalidAmount); }
+        let from_bal = Self::balance(env.clone(), from.clone());
+        if from_bal < amount { return Err(TokenError::InsufficientBalance); }
+        env.storage().persistent().set(&DataKey::Balance(from), &(from_bal - amount));
+        let to_bal = Self::balance(env.clone(), to.clone());
+        env.storage().persistent().set(&DataKey::Balance(to), &(to_bal + amount));
+        Ok(())
+    }
