@@ -11,8 +11,8 @@ export default function Navbar() {
           Quorum
         </Link>
         <div className="flex items-center gap-6 text-sm text-slate-400">
-          <Link href="/proposals" className="hover:text-slate-200 transition-colors">Proposals</Link>
-          <Link href="/create" className="hover:text-slate-200 transition-colors">Create</Link>
+          <Link href="/proposals" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">Proposals</Link>
+          <Link href="/create" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">Create</Link>
           <button
             onClick={() => alert("Freighter wallet integration coming soon — testnet deployment in progress.")}
             className="px-4 py-1.5 border border-blue-700 text-blue-400 hover:bg-blue-900/30 rounded-md transition-colors"
