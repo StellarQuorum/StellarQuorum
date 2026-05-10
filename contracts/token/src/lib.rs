@@ -91,5 +91,17 @@ impl QuorumToken {
 
     // TODO: implement delegate() for voting power delegation
     // TODO: implement delegate() for voting power delegation
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), TokenError> {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        Ok(())
+    }
+
+    pub fn name(env: Env) -> String { env.storage().instance().get(&DataKey::Name).unwrap() }
+    pub fn symbol(env: Env) -> String { env.storage().instance().get(&DataKey::Symbol).unwrap() }
+    pub fn decimals(env: Env) -> u32 { env.storage().instance().get(&DataKey::Decimals).unwrap() }
+
+    // TODO: implement delegate() for voting power delegation
     // TODO: implement get_past_votes(address, ledger) for snapshot governance
 }
