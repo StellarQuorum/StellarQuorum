@@ -34,6 +34,11 @@ export class QuorumClient {
     throw new Error('Not implemented');
   }
 
+  async getProposalsByStatus(status: Proposal['status']): Promise<Proposal[]> {
+    const all = await this.getAllProposals();
+    return all.filter(p => p.status === status);
+  }
+
   async getAllProposals(): Promise<Proposal[]> {
     const count = await this.getProposalCount();
     const proposals = await Promise.all(
