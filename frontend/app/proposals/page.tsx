@@ -19,7 +19,7 @@ export default function ProposalsPage() {
   const filtered = filter === "all" ? PROPOSALS : PROPOSALS.filter(p => p.status === filter);
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-12">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white mb-2">All Proposals</h1>
         <p className="text-slate-400">{PROPOSALS.length} total proposals across all stages</p>
