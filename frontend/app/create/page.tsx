@@ -39,7 +39,7 @@ export default function CreatePage() {
   const inputClass = "w-full bg-[#0a0f18] border border-[#1a2535] rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-600 transition-colors";
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-12">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
       <h1 className="text-3xl font-bold text-white mb-2">Create Proposal</h1>
       <p className="text-slate-400 mb-8">Submit a new governance proposal to the Quorum community.</p>
 
