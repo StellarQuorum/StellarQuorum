@@ -56,3 +56,30 @@ impl QuorumToken {
         env.storage().persistent().set(&DataKey::Balance(to), &(to_bal + amount));
         Ok(())
     }
+
+    pub fn mint(env: Env, to: Address, amount: i128) -> Result<(), TokenError> {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        if amount <= 0 { return Err(TokenError::InvalidAmount); }
+        let supply: i128 = Self::total_supply(env.clone());
+        env.storage().instance().set(&DataKey::TotalSupply, &(supply + amount));
+        let bal = Self::balance(env.clone(), to.clone());
+        env.storage().persistent().set(&DataKey::Balance(to), &(bal + amount));
+        Ok(())
+    }
+
+    pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), TokenError> {
+        from.require_auth();
+        if amount <= 0 { return Err(TokenError::InvalidAmount); }
+        let bal = Self::balance(env.clone(), from.clone());
+        if bal < amount { return Err(TokenError::InsufficientBalance); }
+        env.storage().persistent().set(&DataKey::Balance(from), &(bal - amount));
+        let supply = Self::total_supply(env.clone());
+        env.storage().instance().set(&DataKey::TotalSupply, &(supply - amount));
+        Ok(())
+    }
+
+    // TODO: implement approve() and transfer_from() for allowance flows
+    // TODO: implement delegate() for voting power delegation
+    // TODO: implement get_past_votes(address, ledger) for snapshot governance
+}
