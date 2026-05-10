@@ -182,3 +182,28 @@ Quorum participates in the **Stellar Wave** on [Drips Network](https://www.drips
 ## License
 
 MIT — free to use, modify, and distribute.
+
+---
+
+## SDK Reference
+
+### `QuorumClient`
+
+```typescript
+import { QuorumClient, TESTNET } from '@quorum/sdk';
+
+const client = new QuorumClient({ ...TESTNET, governanceContractId: 'CC...', tokenContractId: 'CC...' });
+
+// Read proposals
+await client.getProposal(1n);           // Get proposal by ID
+await client.getAllProposals();          // Get all proposals
+await client.getProposalCount();        // Total proposal count
+await client.getConfig();               // Protocol config (quorum, voting period, etc.)
+await client.hasVoted(1n, 'G...');      // Check if address voted
+
+// Build transactions (returns unsigned XDR for Freighter signing)
+await client.buildCreateProposal(address, title, description);
+await client.buildVote(voter, proposalId, support); // support: 0=Against, 1=For, 2=Abstain
+await client.buildFinalize(proposalId);
+await client.buildExecute(proposalId);
+```
