@@ -15,3 +15,47 @@
 Quorum is an open-source governance infrastructure layer for the Stellar and Soroban ecosystem. It provides the core primitives for decentralized, token-weighted decision-making: proposal creation, on-chain voting, delegation, timelock execution, and transparent result reporting.
 
 As Stellar moves from a foundation-driven upgrade model to community-driven governance — a stated priority in the SDF's 2026 roadmap — the ecosystem needs reliable, auditable governance tooling that DeFi protocols, DAOs, and community organizations can adopt without building from scratch.
+
+---
+
+## Repository Structure
+
+```
+quorum/
+├── frontend/              # Next.js governance UI
+│   ├── app/
+│   │   ├── page.tsx       # Dashboard with live stats and recent proposals
+│   │   ├── proposals/     # Proposals list + detail pages
+│   │   └── create/        # Create proposal form
+│   ├── components/
+│   │   ├── Navbar.tsx
+│   │   ├── Footer.tsx
+│   │   ├── ProposalCard.tsx
+│   │   ├── VoteBar.tsx
+│   │   └── StatusBadge.tsx
+│   └── lib/
+│       ├── types.ts        # Proposal, Vote, ProposalStatus interfaces
+│       └── proposals.ts    # Mock proposal data + getProposalById()
+│
+├── contracts/             # Soroban smart contracts (Rust)
+│   ├── governance/        # Proposal creation, voting, timelock, execution
+│   │   └── src/lib.rs
+│   ├── token/             # QUORUM governance token (SEP-41 compatible)
+│   │   └── src/lib.rs
+│   └── Cargo.toml         # Workspace
+│
+├── sdk/                   # TypeScript SDK for dApp integration
+│   ├── src/
+│   │   ├── client.ts      # QuorumClient — typed proposal/vote methods
+│   │   ├── types.ts       # Shared TypeScript types
+│   │   └── index.ts
+│   └── package.json
+│
+├── scripts/
+│   └── deploy.sh          # Deploy contracts to testnet/mainnet
+│
+├── .github/
+│   └── workflows/ci.yml   # CI: contracts + frontend + SDK
+│
+└── README.md
+```
