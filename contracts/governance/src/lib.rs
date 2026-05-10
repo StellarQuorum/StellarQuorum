@@ -18,3 +18,27 @@ pub enum GovernanceError {
     VotingPeriodEnded       = 11,
     TimelockNotExpired      = 12,
 }
+
+#[contracttype]
+#[derive(Clone, PartialEq)]
+pub enum ProposalStatus {
+    Pending, Active, Passed, Failed, Queued, Executed, Cancelled,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct Proposal {
+    pub id: u64,
+    pub proposer: Address,
+    pub title: String,
+    pub description: String,
+    pub for_votes: i128,
+    pub against_votes: i128,
+    pub abstain_votes: i128,
+    pub snapshot_ledger: u32,
+    pub start_ledger: u32,
+    pub end_ledger: u32,
+    pub queue_ledger: u32,
+    pub quorum_required: i128,
+    pub status: ProposalStatus,
+}
