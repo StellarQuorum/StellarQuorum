@@ -32,7 +32,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
         </h3>
 
         <p className="text-xs text-slate-500 mb-4">
-          Proposed by {proposal.proposer} &middot; {daysRelative(proposal.endTime, isActive)}
+          Proposed by <span title={proposal.proposer}>{proposal.proposer}</span> &middot; {daysRelative(proposal.endTime, isActive)}
         </p>
 
         <VoteBar
