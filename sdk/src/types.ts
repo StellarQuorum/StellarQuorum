@@ -35,3 +35,8 @@ export interface QuorumClientConfig {
   governanceContractId: string;
   tokenContractId: string;
 }
+
+export interface NetworkConfig {
+  rpcUrl: string;
+  networkPassphrase: string;
+}
