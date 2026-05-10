@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
-NETWORK=testnet SOURCE_ACCOUNT=G... bash scripts/deploy.sh
+# Deploy Quorum contracts to Stellar testnet or mainnet
+# Usage: NETWORK=testnet SOURCE_ACCOUNT=G... bash scripts/deploy.sh
 set -euo pipefail
 
 NETWORK="${NETWORK:-testnet}"
