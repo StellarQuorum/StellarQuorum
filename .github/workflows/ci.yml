@@ -29,6 +29,11 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: frontend/.next/cache
+          key: nextjs-${{ hashFiles("frontend/package-lock.json") }}
       - run: npm ci
       - run: npm run build
 
