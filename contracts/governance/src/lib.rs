@@ -147,3 +147,20 @@ impl GovernanceContract {
         // TODO: dispatch on-chain actions encoded in proposal
         Ok(())
     }
+
+    pub fn get_proposal(env: Env, id: u64) -> Result<Proposal, GovernanceError> {
+        env.storage().persistent().get(&DataKey::Proposal(id)).ok_or(GovernanceError::ProposalNotFound)
+    }
+
+    pub fn get_proposal_count(env: Env) -> u64 {
+        env.storage().instance().get(&DataKey::ProposalCount).unwrap_or(0)
+    }
+
+    pub fn has_voted(env: Env, proposal_id: u64, voter: Address) -> bool {
+        env.storage().persistent().has(&DataKey::HasVoted(proposal_id, voter))
+    }
+
+    pub fn get_config(env: Env) -> Config {
+        env.storage().instance().get(&DataKey::Config).unwrap()
+    }
+}
