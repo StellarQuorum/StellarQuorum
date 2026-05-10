@@ -42,3 +42,22 @@ pub struct Proposal {
     pub quorum_required: i128,
     pub status: ProposalStatus,
 }
+
+#[contracttype]
+pub struct Config {
+    pub token: Address,
+    pub quorum_bps: u32,
+    pub voting_period: u32,
+    pub timelock_period: u32,
+    pub proposal_threshold: i128,
+    pub admin: Address,
+}
+
+#[contracttype]
+pub enum DataKey {
+    Config,
+    ProposalCount,
+    Proposal(u64),
+    HasVoted(u64, Address),
+    Delegate(Address),
+}
