@@ -98,3 +98,24 @@ impl GovernanceContract {
         env.storage().instance().set(&DataKey::ProposalCount, &id);
         Ok(id)
     }
+
+    pub fn vote(env: Env, voter: Address, proposal_id: u64, support: u32) -> Result<(), GovernanceError> {
+        voter.require_auth();
+        if support > 2 { return Err(GovernanceError::InvalidVoteChoice); }
+        if env.storage().persistent().has(&DataKey::HasVoted(proposal_id, voter.clone())) {
+            return Err(GovernanceError::AlreadyVoted);
+        }
+        let mut proposal: Proposal = env.storage().persistent()
+            .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
+        if env.ledger().sequence() > proposal.end_ledger { return Err(GovernanceError::VotingPeriodEnded); }
+        if proposal.status != ProposalStatus::Active { return Err(GovernanceError::VotingNotActive); }
+        let voting_power: i128 = 0; // TODO: get from token contract at snapshot_ledger
+        match support {
+            0 => proposal.against_votes += voting_power,
+            1 => proposal.for_votes += voting_power,
+            _ => proposal.abstain_votes += voting_power,
+        }
+        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        env.storage().persistent().set(&DataKey::HasVoted(proposal_id, voter), &support);
+        Ok(())
+    }
