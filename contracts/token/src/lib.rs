@@ -79,7 +79,17 @@ impl QuorumToken {
         Ok(())
     }
 
-    // TODO: implement approve() and transfer_from() for allowance flows
+    pub fn approve(env: Env, owner: Address, spender: Address, amount: i128) -> Result<(), TokenError> {
+        owner.require_auth();
+        env.storage().persistent().set(&DataKey::Allowance(owner.clone(), spender.clone()), &amount);
+        Ok(())
+    }
+
+    pub fn allowance(env: Env, owner: Address, spender: Address) -> i128 {
+        env.storage().persistent().get(&DataKey::Allowance(owner, spender)).unwrap_or(0)
+    }
+
+    // TODO: implement delegate() for voting power delegation
     // TODO: implement delegate() for voting power delegation
     // TODO: implement get_past_votes(address, ledger) for snapshot governance
 }
