@@ -49,7 +49,7 @@ export default function ProposalsPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="text-center py-16 text-slate-500">No proposals match this filter.</div>
+        <div className="text-center py-16 text-slate-500">No proposals match the selected filter. Try "All" to see everything.</div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
           {filtered.map(p => (
