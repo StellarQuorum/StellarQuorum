@@ -59,3 +59,26 @@ quorum/
 │
 └── README.md
 ```
+
+---
+
+## Governance Model
+
+### Proposal Lifecycle
+
+| State | Description |
+|---|---|
+| Pending | Created, voting not yet started |
+| Active | Voting window is open |
+| Failed | Quorum not reached or majority Against |
+| Queued | Passed, waiting in 48-hour timelock |
+| Executed | Timelock expired, on-chain actions executed |
+| Cancelled | Cancelled by proposer before voting ends |
+
+### Quorum
+
+The quorum threshold is the minimum total voting power (For + Against + Abstain) required for a proposal to be eligible for execution. Without quorum, a proposal fails regardless of vote distribution. Default: 5% of circulating QUORUM supply.
+
+### Timelock
+
+All passed proposals enter a 48-hour timelock before execution. A guardian multisig can veto during this window as a safety net against governance attacks.
