@@ -137,3 +137,44 @@ const client = new QuorumClient({
 const proposals = await client.getAllProposals();
 const xdr = await client.buildVote(voterAddress, 1n, 1); // Vote For on proposal 1
 ```
+
+---
+
+## Roadmap
+
+- [ ] Freighter wallet integration for live voting on Stellar testnet
+- [ ] Soroban governance contract testnet deployment
+- [ ] Token delegation UI — delegate voting power without transferring tokens
+- [ ] Timelock execution engine — automated execution after 48h delay
+- [ ] Multi-sig proposal creation
+- [ ] Governor contract security audit
+- [ ] QUORUM token distribution and staking
+- [ ] Off-chain signaling (Snapshot-style) before on-chain execution
+- [ ] Governance analytics dashboard
+
+---
+
+## Drips Wave
+
+Quorum participates in the **Stellar Wave** on [Drips Network](https://www.drips.network/wave).
+
+**Good first issues:**
+- Build the Freighter wallet connection component
+- Write the Soroban governance contract `cancel()` function
+- Add proposal search and sorting to the proposals list
+- Implement delegation UI
+- Write unit tests for the proposal data layer
+
+---
+
+## Contributing
+
+1. Fork the repo and create a feature branch
+2. Make your changes with clear commit messages
+3. Open a PR referencing the issue
+
+---
+
+## License
+
+MIT — free to use, modify, and distribute.
