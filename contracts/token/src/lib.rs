@@ -20,3 +20,28 @@ pub enum DataKey {
     Balance(Address),
     Allowance(Address, Address),
 }
+
+#[contract]
+pub struct QuorumToken;
+
+#[contractimpl]
+impl QuorumToken {
+    pub fn initialize(env: Env, admin: Address, name: String, symbol: String, decimals: u32, initial_supply: i128) -> Result<(), TokenError> {
+        if env.storage().instance().has(&DataKey::Admin) { return Err(TokenError::AlreadyInitialized); }
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Name, &name);
+        env.storage().instance().set(&DataKey::Symbol, &symbol);
+        env.storage().instance().set(&DataKey::Decimals, &decimals);
+        env.storage().instance().set(&DataKey::TotalSupply, &initial_supply);
+        env.storage().persistent().set(&DataKey::Balance(admin), &initial_supply);
+        Ok(())
+    }
+
+    pub fn balance(env: Env, owner: Address) -> i128 {
+        env.storage().persistent().get(&DataKey::Balance(owner)).unwrap_or(0)
+    }
+
+    pub fn total_supply(env: Env) -> i128 {
+        env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)
+    }
