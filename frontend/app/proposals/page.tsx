@@ -15,6 +15,7 @@ const FILTERS: { label: string; value: ProposalStatus | "all" }[] = [
 
 export default function ProposalsPage() {
   const [filter, setFilter] = useState<ProposalStatus | "all">("all");
+  const activeCount = PROPOSALS.filter(p => p.status === 'active').length;
 
   const filtered = filter === "all" ? PROPOSALS : PROPOSALS.filter(p => p.status === filter);
 
