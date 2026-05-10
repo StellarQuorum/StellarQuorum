@@ -17,7 +17,7 @@ export default function VoteBar({ forVotes, againstVotes, abstainVotes, compact 
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className={`flex ${compact ? "h-1.5" : "h-3"} rounded-full overflow-hidden gap-0.5`}>
+      <div className={`flex ${compact ? "h-1.5" : "h-3"} rounded-full overflow-hidden gap-px`}>
         {forPct > 0 && <div className="bg-emerald-500 rounded-l-full" style={{ width: `${forPct}%` }} />}
         {againstPct > 0 && <div className="bg-red-500" style={{ width: `${againstPct}%` }} />}
         {abstainPct > 0 && <div className="bg-slate-500 rounded-r-full" style={{ width: `${abstainPct}%` }} />}
