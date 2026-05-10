@@ -10,7 +10,7 @@ export default function Home() {
   return (
     <div className="flex flex-col">
       {/* Hero */}
-      <section className="py-24 px-6 text-center border-b border-[#1a2535]">
+      <section className="py-20 sm:py-24 px-4 sm:px-6 text-center border-b border-[#1a2535]">
         <div className="max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-900/30 border border-blue-700/50 text-blue-400 text-sm mb-6">
             <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
