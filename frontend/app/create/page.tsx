@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 
-const CATEGORIES = ["Financial", "Technical", "Treasury", "Governance", "Security"];
+const CATEGORIES = ["Financial", "Technical", "Treasury", "Governance", "Security", "Community", "Protocol"];
 const DURATIONS = ["3 days", "7 days", "14 days"];
 
 interface FormState {
