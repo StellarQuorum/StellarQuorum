@@ -77,3 +77,24 @@ impl GovernanceContract {
         env.storage().instance().set(&DataKey::ProposalCount, &0u64);
         Ok(())
     }
+
+    pub fn create_proposal(env: Env, proposer: Address, title: String, description: String) -> Result<u64, GovernanceError> {
+        proposer.require_auth();
+        let count: u64 = env.storage().instance().get(&DataKey::ProposalCount).unwrap_or(0);
+        let id = count + 1;
+        let current = env.ledger().sequence();
+        let config: Config = env.storage().instance().get(&DataKey::Config).unwrap();
+        let proposal = Proposal {
+            id, proposer, title, description,
+            for_votes: 0, against_votes: 0, abstain_votes: 0,
+            snapshot_ledger: current,
+            start_ledger: current + 1,
+            end_ledger: current + 1 + config.voting_period,
+            queue_ledger: 0,
+            quorum_required: 0, // TODO: calc from total_supply * quorum_bps / 10000
+            status: ProposalStatus::Active,
+        };
+        env.storage().persistent().set(&DataKey::Proposal(id), &proposal);
+        env.storage().instance().set(&DataKey::ProposalCount, &id);
+        Ok(id)
+    }
