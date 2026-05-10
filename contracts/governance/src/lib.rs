@@ -177,3 +177,5 @@ impl GovernanceContract {
         Ok(())
     }
 }
+// TODO: add delegate() for voting power delegation
+// TODO: add get_past_votes(address, ledger) for snapshot-based power
