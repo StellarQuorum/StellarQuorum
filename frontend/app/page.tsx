@@ -40,7 +40,7 @@ export default function Home() {
           {[
             { value: "8", label: "Total Proposals" },
             { value: `${activeCount}`, label: "Active Votes" },
-            { value: "1.2M", label: "XLM Governed" },
+            { value: "1.2M XLM", label: "Total Governed" },
           ].map(s => (
             <div key={s.label}>
               <div className="text-3xl font-bold text-blue-400">{s.value}</div>
