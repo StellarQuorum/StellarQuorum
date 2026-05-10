@@ -163,4 +163,17 @@ impl GovernanceContract {
     pub fn get_config(env: Env) -> Config {
         env.storage().instance().get(&DataKey::Config).unwrap()
     }
+
+    pub fn cancel(env: Env, caller: Address, proposal_id: u64) -> Result<(), GovernanceError> {
+        caller.require_auth();
+        let mut proposal: Proposal = env.storage().persistent()
+            .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
+        let config: Config = env.storage().instance().get(&DataKey::Config).unwrap();
+        if caller != proposal.proposer && caller != config.admin {
+            return Err(GovernanceError::Unauthorized);
+        }
+        proposal.status = ProposalStatus::Cancelled;
+        env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        Ok(())
+    }
 }
