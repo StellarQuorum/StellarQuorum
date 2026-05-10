@@ -82,3 +82,58 @@ The quorum threshold is the minimum total voting power (For + Against + Abstain)
 ### Timelock
 
 All passed proposals enter a 48-hour timelock before execution. A guardian multisig can veto during this window as a safety net against governance attacks.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 16, TypeScript, Tailwind CSS v4 |
+| Governance Contract | Soroban (Rust), soroban-sdk v22 |
+| Token Contract | Soroban (Rust), SEP-41 compatible |
+| SDK | TypeScript, @stellar/stellar-sdk |
+| Wallet | Freighter (planned) |
+| CI | GitHub Actions |
+
+---
+
+## Getting Started
+
+### Run the Frontend
+
+```bash
+git clone https://github.com/StellarQuorum/StellarQuorum.git
+cd StellarQuorum/frontend
+npm install && npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000)
+
+### Build the Contracts
+
+```bash
+cd contracts
+cargo build --target wasm32-unknown-unknown --release
+```
+
+### Deploy to Testnet
+
+```bash
+SOURCE_ACCOUNT=G... NETWORK=testnet bash scripts/deploy.sh
+```
+
+### Use the SDK
+
+```typescript
+import { QuorumClient, TESTNET } from '@quorum/sdk';
+
+const client = new QuorumClient({
+  ...TESTNET,
+  governanceContractId: 'CC...',
+  tokenContractId: 'CC...',
+});
+
+const proposals = await client.getAllProposals();
+const xdr = await client.buildVote(voterAddress, 1n, 1); // Vote For on proposal 1
+```
