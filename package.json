@@ -10,7 +10,9 @@
     "build:contracts": "cd contracts && cargo build --target wasm32-unknown-unknown --release",
     "lint": "cd frontend && npm run lint",
     "test": "cd frontend && npm test",
-    "bench:proposals": "node sdk/bench/proposal-list.bench.mjs"
+    "test:contracts": "cd contracts && cargo test",
+    "test:frontend": "cd frontend && npm test",
+    "test:sdk": "cd sdk && npm test"
   },
   "engines": {
     "node": ">=18"
