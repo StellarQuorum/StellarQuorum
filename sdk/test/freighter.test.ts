@@ -6,10 +6,11 @@ import {
   signWithFreighter,
 } from '../src/freighter';
 import * as root from '../src/index';
+import { jest } from '@jest/globals';
 
-const mockRequestAccess = jest.fn();
-const mockSignTransaction = jest.fn();
-const mockIsConnected = jest.fn();
+const mockRequestAccess = jest.fn<() => Promise<unknown>>();
+const mockSignTransaction = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockIsConnected = jest.fn<() => Promise<unknown>>();
 
 jest.mock('@stellar/freighter-api', () => ({
   requestAccess: () => mockRequestAccess(),

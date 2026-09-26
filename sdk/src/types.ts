@@ -33,7 +33,18 @@ export interface QuorumClientConfig {
   rpcUrl: string;
   networkPassphrase: string;
   governanceContractId: string;
-  tokenContractId: string;
+  tokenContractId?: string;
+  requestTimeoutMs?: number;
+  readRetryAttempts?: number;
+  retryBaseDelayMs?: number;
+  retryJitterMs?: number;
+  pollIntervalMs?: number;
+  confirmationTimeoutMs?: number;
+}
+
+export interface TransactionConfirmationOptions {
+  pollIntervalMs?: number;
+  timeoutMs?: number;
 }
 
 export interface NetworkConfig {

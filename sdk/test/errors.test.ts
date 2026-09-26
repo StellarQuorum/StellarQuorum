@@ -1,6 +1,9 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { fileURLToPath } from 'url';
 import { GovernanceError, TokenError, parseGovernanceError, parseTokenError, contractErrorCode } from '../src/errors';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 /** name → code pairs of a `#[contracterror]` enum, read from the Rust source. */
 function rustEnum(file: string, name: string): Record<string, number> {
