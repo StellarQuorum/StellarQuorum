@@ -1,18 +1,20 @@
-export {
-  QuorumClient,
-  TESTNET,
-  MAINNET,
-  DEFAULT_PAGE_SIZE,
-  ProposalNotFoundError,
-  VotingNotActiveError,
-  ProposalNotPassedError,
-  TimelockNotExpiredError,
-  UnauthorizedError,
-} from './client';
+export { QuorumClient, TESTNET, MAINNET } from './client.js';
+export { GovernanceError, TokenError, contractErrorCode, parseGovernanceError, parseTokenError } from './errors.js';
+export { EVENT_TOPICS, EventDecodeError, decodeEvent, decodeEvents } from './events.js';
 export type {
-  Proposal,
-  GovernanceConfig,
-  QuorumClientConfig,
-  VoteSupport,
-  GetProposalsOptions,
-} from './types';
+  AdminTransferredEvent,
+  ApproveEvent,
+  BurnEvent,
+  MintEvent,
+  ProposalCancelledEvent,
+  ProposalCreatedEvent,
+  ProposalExecutedEvent,
+  ProposalFinalizedEvent,
+  ProposalQueuedEvent,
+  QuorumEvent,
+  QuorumEventType,
+  RawContractEvent,
+  TransferEvent,
+  VoteCastEvent,
+} from './events.js';
+export type { Proposal, ProposalStatus, GovernanceConfig, QuorumClientConfig, VoteSupport } from './types.js';

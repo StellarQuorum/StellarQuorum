@@ -116,6 +116,10 @@ jobs:
       - name: Lint
         run: cd sdk && npm run lint
       - run: cd sdk && npm run build
+      # Issue #125: require() and import must both resolve through the
+      # exports map, and the Freighter helper must stay out of the root entry.
+      - name: Smoke test (ESM + CJS)
+        run: cd sdk && npm run test:smoke
       # Issue #129: encoding/decoding tests against a mocked RPC, plus the
       # error-enum drift check against the Rust contracts (#130).
       - name: Test
