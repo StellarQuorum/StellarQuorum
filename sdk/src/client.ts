@@ -477,14 +477,43 @@ export class QuorumClient {
   // ─── Transaction Builders ────────────────────────────────────────────────
   // These return unsigned XDR strings — the caller signs with Freighter and submits.
 
-  async buildCreateProposal(proposer: string, title: string, description: string): Promise<string> {
-    // TODO: build transaction → governance.create_proposal(proposer, title, description)
-    throw new Error('Not implemented');
+  /**
+   * Builds signable XDR for `create_proposal(proposer, title, description)` (issue #113).
+   *
+   * Creates a new governance proposal. `proposer` must sign and must hold at
+   * least `proposalThreshold` tokens at the governance contract's snapshot
+   * ledger. `source` pays the fee and defaults to `proposer`.
+   *
+   * @throws {Error} proposal threshold or other contract errors.
+   */
+  async buildCreateProposal(proposer: string, title: string, description: string, source?: string): Promise<string> {
+    return this.buildGovernanceTransaction(
+      source ?? proposer,
+      'create_proposal',
+      new Address(proposer).toScVal(),
+      nativeToScVal(title, { type: 'string' }),
+      nativeToScVal(description, { type: 'string' }),
+    );
   }
 
-  async buildVote(voter: string, proposalId: bigint, support: VoteSupport): Promise<string> {
-    // TODO: build transaction → governance.vote(voter, proposalId, support)
-    throw new Error('Not implemented');
+  /**
+   * Builds signable XDR for `vote(voter, proposal_id, support)` (issue #114).
+   *
+   * Casts a vote on an active proposal. `support` is `0` (Against), `1` (For),
+   * or `2` (Abstain). `voter` must sign and must not have already voted on
+   * this proposal. `source` pays the fee and defaults to `voter`.
+   *
+   * @throws {ProposalNotFoundError} unknown proposal id.
+   * @throws {VotingNotActiveError} proposal voting window is closed.
+   */
+  async buildVote(voter: string, proposalId: bigint, support: VoteSupport, source?: string): Promise<string> {
+    return this.buildGovernanceTransaction(
+      source ?? voter,
+      'vote',
+      new Address(voter).toScVal(),
+      nativeToScVal(proposalId, { type: 'u64' }),
+      nativeToScVal(support, { type: 'u32' }),
+    );
   }
 
   /**
