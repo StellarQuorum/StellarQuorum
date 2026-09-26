@@ -1,5 +1,6 @@
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
+use soroban_sdk::testutils::storage::Persistent as _;
 use soroban_sdk::{IntoVal, TryFromVal, Val};
 
 const INITIAL_SUPPLY: i128 = 1_000_000;
@@ -528,6 +529,8 @@ fn transfer_admin_emits_both_sides_of_the_handover() {
     let new_admin = Address::generate(&env);
 
     token.transfer_admin(&new_admin);
+    env.mock_all_auths();
+    token.accept_admin();
 
     let (topics, data) = last_event(&env);
     assert_eq!(
@@ -787,12 +790,13 @@ fn a_negative_approval_is_rejected() {
 #[test]
 fn transfer_admin_hands_minting_rights_to_the_new_admin() {
     let env = Env::default();
-    let (_, token) = deploy(&env);
+    let (admin, token) = deploy(&env);
     let new_admin = Address::generate(&env);
 
     token.transfer_admin(&new_admin);
+    env.mock_all_auths();
+    token.accept_admin();
 
-    // The rights moved: the new admin can mint.
     token.mint(&new_admin, &1_000);
     assert_eq!(token.balance(&new_admin), 1_000);
 }
@@ -1181,4 +1185,15 @@ fn history_just_past_the_window_keeps_one_anchor_and_the_new_entry() {
     assert_eq!(checkpoint_count(&env, &token.address, &holder), 2);
     assert_eq!(token.get_past_balance(&holder, &later), 20);
     assert_eq!(token.get_past_balance(&holder, &(later - 1)), 10);
+}
+
+#[test]
+fn cancel_admin_transfer_stops_handover() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let new_admin = Address::generate(&env);
+
+    token.transfer_admin(&new_admin);
+    token.cancel_admin_transfer();
+    assert!(token.try_accept_admin().is_err());
 }

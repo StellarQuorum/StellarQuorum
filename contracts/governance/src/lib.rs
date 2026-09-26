@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 use soroban_sdk::{contract, contractclient, contractimpl, contracttype, contracterror, Address, Env, String, Symbol};
 
 /// Subset of the QUORUM token interface the governor depends on.
@@ -59,6 +59,7 @@ pub struct ProposalCreated {
     pub start_ledger: u32,
     pub end_ledger: u32,
     pub quorum_required: i128,
+    pub metadata_uri: String,
 }
 
 /// Emitted for each accepted vote. `voting_power` is the weight actually
@@ -96,6 +97,7 @@ pub struct ProposalQueued {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProposalExecuted {
     pub id: u64,
+    pub executor: Address,
 }
 
 #[contracttype]
@@ -127,6 +129,7 @@ pub struct Proposal {
     pub queue_ledger: u32,
     pub quorum_required: i128,
     pub status: ProposalStatus,
+    pub metadata_uri: String,
 }
 
 #[contracttype]
@@ -146,6 +149,7 @@ pub enum DataKey {
     Proposal(u64),
     HasVoted(u64, Address),
     Delegate(Address),
+    PendingAdmin,
 }
 
 #[contract]
@@ -164,7 +168,11 @@ impl GovernanceContract {
         Ok(())
     }
 
-    pub fn create_proposal(env: Env, proposer: Address, title: String, description: String) -> Result<u64, GovernanceError> {
+    pub fn version(env: Env) -> String {
+        String::from_str(&env, env!("CARGO_PKG_VERSION"))
+    }
+
+    pub fn create_proposal(env: Env, proposer: Address, title: String, description: String, metadata_uri: String) -> Result<u64, GovernanceError> {
         proposer.require_auth();
         let count: u64 = env.storage().instance().get(&DataKey::ProposalCount).unwrap_or(0);
         let id = count + 1;
@@ -191,6 +199,7 @@ impl GovernanceContract {
             queue_ledger: 0,
             quorum_required,
             status: ProposalStatus::Active,
+            metadata_uri: metadata_uri.clone(),
         };
         env.storage().persistent().set(&DataKey::Proposal(id), &proposal);
         env.storage().instance().set(&DataKey::ProposalCount, &id);
@@ -206,6 +215,7 @@ impl GovernanceContract {
                 start_ledger: proposal.start_ledger,
                 end_ledger: proposal.end_ledger,
                 quorum_required: proposal.quorum_required,
+                metadata_uri,
             },
         );
         Ok(id)
@@ -285,7 +295,8 @@ impl GovernanceContract {
         Ok(status)
     }
 
-    pub fn execute(env: Env, proposal_id: u64) -> Result<(), GovernanceError> {
+    pub fn execute(env: Env, executor: Address, proposal_id: u64) -> Result<(), GovernanceError> {
+        executor.require_auth();
         let mut proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
         if proposal.status != ProposalStatus::Queued { return Err(GovernanceError::ProposalNotPassed); }
@@ -297,7 +308,7 @@ impl GovernanceContract {
 
         env.events().publish(
             (Symbol::new(&env, "proposal_executed"), proposal_id),
-            ProposalExecuted { id: proposal_id },
+            ProposalExecuted { id: proposal_id, executor },
         );
         Ok(())
     }
@@ -351,6 +362,31 @@ impl GovernanceContract {
             (Symbol::new(&env, "proposal_cancelled"), proposal_id),
             ProposalCancelled { id: proposal_id, caller },
         );
+        Ok(())
+    }
+
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), GovernanceError> {
+        let config = Self::get_config(env.clone());
+        config.admin.require_auth();
+        env.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
+        Ok(())
+    }
+
+    pub fn accept_admin(env: Env) -> Result<(), GovernanceError> {
+        let pending: Address = env.storage().instance().get(&DataKey::PendingAdmin)
+            .ok_or(GovernanceError::Unauthorized)?;
+        pending.require_auth();
+        let mut config = Self::get_config(env.clone());
+        config.admin = pending;
+        env.storage().instance().set(&DataKey::Config, &config);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+        Ok(())
+    }
+
+    pub fn cancel_admin_transfer(env: Env) -> Result<(), GovernanceError> {
+        let config = Self::get_config(env.clone());
+        config.admin.require_auth();
+        env.storage().instance().remove(&DataKey::PendingAdmin);
         Ok(())
     }
 }
