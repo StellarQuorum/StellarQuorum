@@ -40,3 +40,15 @@ export interface NetworkConfig {
   rpcUrl: string;
   networkPassphrase: string;
 }
+
+/**
+ * Pagination window for proposal listing (issue #118).
+ *
+ * `offset` is the number of oldest proposals to skip (0-based), `limit` is
+ * the maximum number of proposals to return. When omitted, callers that pass
+ * no options get the historical behaviour (all proposals).
+ */
+export interface GetProposalsOptions {
+  limit?: number;
+  offset?: number;
+}

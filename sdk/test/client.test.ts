@@ -8,6 +8,7 @@ import { enumVariant, structVal } from './xdr';
 const simulate = jest.spyOn(SorobanRpc.Server.prototype, 'simulateTransaction');
 
 const CONTRACT = 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526';
+const TOKEN = 'CABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMWJO7';
 const VOTER = 'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H';
 
 const client = new QuorumClient({
@@ -26,10 +27,22 @@ function fails(error: string) {
 
 /** Method name and ScVal arguments of the contract call last sent to the RPC. */
 function lastCall(): { method: string; args: xdr.ScVal[] } {
+  return invoke(lastCallInvoke());
+}
+
+/** The contract call last sent to the RPC. */
+function lastCallInvoke(): xdr.InvokeContractArgs {
   const tx = simulate.mock.calls.at(-1)![0] as Transaction;
-  const op = tx.operations[0] as { func: xdr.HostFunction };
-  const invoke = op.func.invokeContract();
-  return { method: invoke.functionName().toString(), args: invoke.args() };
+  return (tx.operations[0] as { func: xdr.HostFunction }).func.invokeContract() as xdr.InvokeContractArgs;
+}
+
+function invoke(args: xdr.InvokeContractArgs): { method: string; args: xdr.ScVal[] } {
+  return { method: args.functionName().toString(), args: args.args() };
+}
+
+/** Contract the call last sent to the RPC was addressed to. */
+function callAddress(): string {
+  return Address.fromScAddress(lastCallInvoke().contractAddress()).toString();
 }
 
 const proposalVal = structVal({
@@ -143,4 +156,74 @@ it('getLatestLedger returns the RPC sequence', async () => {
   jest.spyOn(SorobanRpc.Server.prototype, 'getLatestLedger')
     .mockResolvedValueOnce({ sequence: 1234 } as SorobanRpc.Api.GetLatestLedgerResponse);
   expect(await client.getLatestLedger()).toBe(1234);
+});
+
+// The token is a separate contract from governance: these reads have to address
+// it, and get_past_balance has to be given the snapshot ledger rather than the
+// latest one, or the weight shown before signing is the wrong number.
+describe('voting power', () => {
+  it('getVotingPower encodes (voter, snapshot_ledger) against the token', async () => {
+    returns(nativeToScVal(250n, { type: 'i128' }));
+    expect(await client.getVotingPower(VOTER, 999)).toBe(250n);
+
+    const { method, args } = lastCall();
+    expect(method).toBe('get_past_balance');
+    expect(args.map(a => a.switch())).toEqual([xdr.ScValType.scvAddress(), xdr.ScValType.scvU32()]);
+    expect(Address.fromScVal(args[0]).toString()).toBe(VOTER);
+    expect(scValToNative(args[1])).toBe(999);
+  });
+
+  it('reads the configured token contract, not the governance one', async () => {
+    const scoped = new QuorumClient({ ...TESTNET, governanceContractId: CONTRACT, tokenContractId: TOKEN } as QuorumClientConfig);
+
+    returns(nativeToScVal(0n, { type: 'i128' }));
+    await scoped.getVotingPower(VOTER, 999);
+
+    expect(callAddress()).toBe(TOKEN);
+  });
+
+  it('falls back to the governance config when no token id is configured', async () => {
+    const scoped = new QuorumClient({
+      ...TESTNET,
+      governanceContractId: CONTRACT,
+      tokenContractId: '',
+    } as QuorumClientConfig);
+
+    returns(structVal({
+      token: new Address(TOKEN).toScVal(),
+      quorum_bps: nativeToScVal(500, { type: 'u32' }),
+      voting_period: nativeToScVal(17280, { type: 'u32' }),
+      timelock_period: nativeToScVal(34560, { type: 'u32' }),
+      proposal_threshold: nativeToScVal(1000n, { type: 'i128' }),
+      admin: new Address(VOTER).toScVal(),
+    }));
+    returns(nativeToScVal(7n, { type: 'i128' }));
+    expect(await scoped.getVotingPower(VOTER, 999)).toBe(7n);
+
+    expect(callAddress()).toBe(TOKEN);
+  });
+
+  it('reports a zero snapshot balance as zero rather than an error', async () => {
+    returns(nativeToScVal(0n, { type: 'i128' }));
+    expect(await client.getVotingPower(VOTER, 999)).toBe(0n);
+  });
+
+  it('getBalance reads the live balance and getTokenDecimals the token scale', async () => {
+    returns(nativeToScVal(400n, { type: 'i128' }));
+    expect(await client.getBalance(VOTER)).toBe(400n);
+
+    const balance = lastCall();
+    expect(balance.method).toBe('balance');
+    expect(balance.args.map(a => a.switch())).toEqual([xdr.ScValType.scvAddress()]);
+    expect(Address.fromScVal(balance.args[0]).toString()).toBe(VOTER);
+
+    returns(nativeToScVal(7, { type: 'u32' }));
+    expect(await client.getTokenDecimals()).toBe(7);
+    expect(lastCall()).toEqual({ method: 'decimals', args: [] });
+  });
+
+  it('surfaces a failed read instead of reporting zero power', async () => {
+    fails('HostError: Error(Contract, #1)');
+    await expect(client.getVotingPower(VOTER, 999)).rejects.toThrow('Error(Contract, #1)');
+  });
 });

@@ -30,13 +30,16 @@ The quorum threshold is the minimum total voting power (For + Against + Abstain)
 
 Voting power is derived from QUORUM token balance at the snapshot ledger taken at proposal creation. This prevents flash-loan manipulation of governance votes.
 
+A voter's weight is therefore their balance *at the snapshot*, not their current balance, so the two disagree for anyone who bought or sold after the proposal opened. The proposal page reads the balance at the snapshot for the connected wallet and shows it above the vote buttons, before anything is signed — including the case where it is zero, which the contract rejects with `NoVotingPower`. See `frontend/components/VotingPowerPreview.tsx`.
+
 ### Timelock
 
 All passed proposals enter a 48-hour timelock before execution. A guardian multisig can veto during this window as a safety net against governance attacks.
 
 ## Roadmap
 
-- [ ] Freighter wallet integration for live voting on Stellar testnet
+- [x] Freighter wallet connection — connect, connected address, and the snapshot voting-power preview
+- [ ] Sign and submit votes on Stellar testnet through Freighter
 - [ ] Soroban governance contract testnet deployment
 - [ ] Token delegation UI — delegate voting power without transferring tokens
 - [ ] Timelock execution engine — automated execution after 48h delay
@@ -61,7 +64,7 @@ Rewarded issues use `drips:*` labels to show the expected points value:
 | `drips:5` | Large tasks such as new pages or contract functions |
 | `drips:8` | Complex tasks such as full features or security-sensitive work |
 
-See [docs/contributing.md](docs/contributing.md#drips-wave) for the contributor
+See [CONTRIBUTING.md](CONTRIBUTING.md#drips-wave) for the contributor
 claim flow and maintainer setup checklist.
 
 **Good first issues:**
@@ -78,6 +81,9 @@ claim flow and maintainer setup checklist.
 1. Fork the repo and create a feature branch
 2. Make your changes with clear commit messages
 3. Open a PR referencing the issue
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, the
+[Code of Conduct](CODE_OF_CONDUCT.md), and the [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -208,6 +214,7 @@ The frontend reads proposals from the governance contract through `QuorumClient`
 | `NEXT_PUBLIC_GOVERNANCE_CONTRACT_ID` | — | Governance contract to read. |
 | `NEXT_PUBLIC_STELLAR_RPC_URL` | testnet RPC | Soroban RPC endpoint. |
 | `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | testnet | Network passphrase. |
+| `NEXT_PUBLIC_TOKEN_CONTRACT_ID` | governance config | Token contract to read balances from. Optional: the client falls back to the token address in `get_config()`. |
 | `NEXT_PUBLIC_USE_FIXTURE` | — | Set to `1` to serve the bundled mock proposals instead. |
 
-The mock fixture in `frontend/lib/proposals.ts` is also used whenever no contract ID is set, so `npm run dev` works offline without a deployment. The frontend depends on the local SDK, so build it first: `npm run build:sdk`.
+The mock fixture in `frontend/lib/proposals.ts` is also used whenever no contract ID is set, so `npm run dev` works offline without a deployment. Voting power uses a matching fixture in `frontend/lib/voting-power.ts`, keyed by address suffix — an address ending `3XZK` holds 2,500 QUORUM at the snapshot and 4,000 now, one ending `7MKL` holds 150,000 at both, and any other address held nothing at the snapshot. The frontend depends on the local SDK, so build it first: `npm run build:sdk`.
