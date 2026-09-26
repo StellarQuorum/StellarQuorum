@@ -28,10 +28,10 @@ export default async function Home() {
             Quorum provides the primitives for on-chain proposal creation, token-weighted voting, delegation, and transparent execution — built on Soroban.
           </p>
           <div className="flex items-center justify-center gap-4">
-            <Link href="/proposals" className="px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold transition-colors">
+            <Link href="/proposals" className="px-8 py-3 bg-blue-600 hover:bg-blue-500 focus-visible:bg-blue-500 text-white rounded-lg font-semibold transition-colors">
               View Proposals
             </Link>
-            <Link href="/create" className="px-8 py-3 border border-[#1a2535] hover:border-blue-700 text-slate-300 rounded-lg font-semibold transition-colors">
+            <Link href="/create" className="px-8 py-3 border border-[#1a2535] hover:border-blue-700 focus-visible:border-blue-700 text-slate-300 rounded-lg font-semibold transition-colors">
               Create Proposal
             </Link>
           </div>
@@ -59,7 +59,7 @@ export default async function Home() {
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-2xl font-bold text-white">Recent Proposals</h2>
-            <Link href="/proposals" className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
+            <Link href="/proposals" className="text-sm text-blue-400 hover:text-blue-300 focus-visible:text-blue-300 flex items-center gap-1">
               View all <ArrowRight size={14} />
             </Link>
           </div>

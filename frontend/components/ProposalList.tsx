@@ -34,7 +34,7 @@ export default function ProposalList({ proposals }: { proposals: Proposal[] }) {
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
               filter === f.value
                 ? "bg-blue-600 text-white"
-                : "bg-[#0d1520] border border-[#1a2535] text-slate-400 hover:border-blue-800"
+                : "bg-[#0d1520] border border-[#1a2535] text-slate-400 hover:border-blue-800 focus-visible:border-blue-800"
             }`}
           >
             {f.label}

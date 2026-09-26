@@ -13,7 +13,7 @@ exports[`Navbar matches the visual baseline 1`] = `
       "children": [
         {
           "attrs": {
-            "class": "flex items-center gap-2 font-bold text-lg text-blue-400 hover:text-blue-300 transition-colors",
+            "class": "flex items-center gap-2 font-bold text-lg text-blue-400 hover:text-blue-300 focus-visible:text-blue-300 transition-colors",
             "href": "/",
           },
           "children": [
@@ -33,7 +33,7 @@ exports[`Navbar matches the visual baseline 1`] = `
           "children": [
             {
               "attrs": {
-                "class": "hover:text-slate-200 hover:underline underline-offset-4 transition-colors ",
+                "class": "hover:text-slate-200 focus-visible:text-slate-200 hover:underline focus-visible:underline underline-offset-4 transition-colors ",
                 "href": "/proposals",
               },
               "children": [
@@ -43,7 +43,7 @@ exports[`Navbar matches the visual baseline 1`] = `
             },
             {
               "attrs": {
-                "class": "hover:text-slate-200 hover:underline underline-offset-4 transition-colors ",
+                "class": "hover:text-slate-200 focus-visible:text-slate-200 hover:underline focus-visible:underline underline-offset-4 transition-colors ",
                 "href": "/create",
               },
               "children": [
@@ -53,7 +53,7 @@ exports[`Navbar matches the visual baseline 1`] = `
             },
             {
               "attrs": {
-                "class": "px-4 py-1.5 border border-blue-700 text-blue-400 hover:bg-blue-900/30 rounded-md transition-colors disabled:opacity-50",
+                "class": "px-4 py-1.5 border border-blue-700 text-blue-400 hover:bg-blue-900/30 focus-visible:bg-blue-900/30 rounded-md transition-colors disabled:opacity-50",
               },
               "children": [
                 "Connect Wallet",
@@ -84,7 +84,7 @@ exports[`Navbar matches the visual baseline with a wallet connected 1`] = `
       "children": [
         {
           "attrs": {
-            "class": "flex items-center gap-2 font-bold text-lg text-blue-400 hover:text-blue-300 transition-colors",
+            "class": "flex items-center gap-2 font-bold text-lg text-blue-400 hover:text-blue-300 focus-visible:text-blue-300 transition-colors",
             "href": "/",
           },
           "children": [
@@ -104,7 +104,7 @@ exports[`Navbar matches the visual baseline with a wallet connected 1`] = `
           "children": [
             {
               "attrs": {
-                "class": "hover:text-slate-200 hover:underline underline-offset-4 transition-colors ",
+                "class": "hover:text-slate-200 focus-visible:text-slate-200 hover:underline focus-visible:underline underline-offset-4 transition-colors ",
                 "href": "/proposals",
               },
               "children": [
@@ -114,7 +114,7 @@ exports[`Navbar matches the visual baseline with a wallet connected 1`] = `
             },
             {
               "attrs": {
-                "class": "hover:text-slate-200 hover:underline underline-offset-4 transition-colors ",
+                "class": "hover:text-slate-200 focus-visible:text-slate-200 hover:underline focus-visible:underline underline-offset-4 transition-colors ",
                 "href": "/create",
               },
               "children": [
@@ -125,7 +125,7 @@ exports[`Navbar matches the visual baseline with a wallet connected 1`] = `
             {
               "attrs": {
                 "aria-label": "Disconnect wallet GABCDEFGHIJKLMNOPQRSTUVWXYZ3XZK",
-                "class": "px-4 py-1.5 border border-[#1e2d40] text-slate-300 hover:bg-[#162032] rounded-md transition-colors font-mono",
+                "class": "px-4 py-1.5 border border-[#1e2d40] text-slate-300 hover:bg-[#162032] focus-visible:bg-[#162032] rounded-md transition-colors font-mono",
               },
               "children": [
                 "…YZ3XZK",
@@ -156,7 +156,7 @@ exports[`Navbar reports a refused or unavailable wallet instead of failing silen
       "children": [
         {
           "attrs": {
-            "class": "flex items-center gap-2 font-bold text-lg text-blue-400 hover:text-blue-300 transition-colors",
+            "class": "flex items-center gap-2 font-bold text-lg text-blue-400 hover:text-blue-300 focus-visible:text-blue-300 transition-colors",
             "href": "/",
           },
           "children": [
@@ -176,7 +176,7 @@ exports[`Navbar reports a refused or unavailable wallet instead of failing silen
           "children": [
             {
               "attrs": {
-                "class": "hover:text-slate-200 hover:underline underline-offset-4 transition-colors ",
+                "class": "hover:text-slate-200 focus-visible:text-slate-200 hover:underline focus-visible:underline underline-offset-4 transition-colors ",
                 "href": "/proposals",
               },
               "children": [
@@ -186,7 +186,7 @@ exports[`Navbar reports a refused or unavailable wallet instead of failing silen
             },
             {
               "attrs": {
-                "class": "hover:text-slate-200 hover:underline underline-offset-4 transition-colors ",
+                "class": "hover:text-slate-200 focus-visible:text-slate-200 hover:underline focus-visible:underline underline-offset-4 transition-colors ",
                 "href": "/create",
               },
               "children": [
@@ -196,7 +196,7 @@ exports[`Navbar reports a refused or unavailable wallet instead of failing silen
             },
             {
               "attrs": {
-                "class": "px-4 py-1.5 border border-blue-700 text-blue-400 hover:bg-blue-900/30 rounded-md transition-colors disabled:opacity-50",
+                "class": "px-4 py-1.5 border border-blue-700 text-blue-400 hover:bg-blue-900/30 focus-visible:bg-blue-900/30 rounded-md transition-colors disabled:opacity-50",
               },
               "children": [
                 "Connect Wallet",
