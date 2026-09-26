@@ -1,4 +1,18 @@
-import type { Proposal } from "./types";
+import type { Proposal as ChainProposal } from "@quorum/sdk";
+import type { Proposal, ProposalStatus } from "./types";
+
+/**
+ * Proposals are read from the governance contract through QuorumClient. The
+ * PROPOSALS fixture below is served instead when NEXT_PUBLIC_USE_FIXTURE=1 or
+ * no contract is configured, so the UI runs locally without a deployment.
+ * See "Frontend data source" in the README.
+ */
+export const USE_FIXTURE =
+  process.env.NEXT_PUBLIC_USE_FIXTURE === "1" || !process.env.NEXT_PUBLIC_GOVERNANCE_CONTRACT_ID;
+
+/** Average Stellar ledger close time, used to estimate voting window dates. */
+const SECONDS_PER_LEDGER = 5;
+
 
 export const PROPOSALS: Proposal[] = [
   {
@@ -164,6 +178,58 @@ export const PROPOSALS: Proposal[] = [
   },
 ];
 
-export function getProposalById(id: string): Proposal | undefined {
-  return PROPOSALS.find(p => p.id === id);
+export async function getProposals(): Promise<Proposal[]> {
+  if (USE_FIXTURE) return PROPOSALS;
+  const client = await createClient();
+  const [proposals, latestLedger] = await Promise.all([client.getAllProposals(), client.getLatestLedger()]);
+  // Newest first, matching the fixture's "recent" ordering on the home page.
+  return proposals.map(p => toUiProposal(p, latestLedger)).reverse();
+}
+
+export async function getProposalById(id: string): Promise<Proposal | undefined> {
+  if (USE_FIXTURE) return PROPOSALS.find(p => p.id === id);
+  const match = /^QIP-(\d+)$/.exec(id);
+  if (!match) return undefined;
+  const client = await createClient();
+  const [proposal, latestLedger] = await Promise.all([client.getProposal(BigInt(match[1])), client.getLatestLedger()]);
+  return proposal ? toUiProposal(proposal, latestLedger) : undefined;
+}
+
+async function createClient() {
+  // Imported lazily so fixture mode (and its tests) never load the Stellar SDK.
+  const { QuorumClient, TESTNET } = await import("@quorum/sdk");
+  return new QuorumClient({
+    rpcUrl: process.env.NEXT_PUBLIC_STELLAR_RPC_URL ?? TESTNET.rpcUrl!,
+    networkPassphrase: process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? TESTNET.networkPassphrase!,
+    governanceContractId: process.env.NEXT_PUBLIC_GOVERNANCE_CONTRACT_ID!,
+    tokenContractId: process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ID ?? "",
+  });
+}
+
+/**
+ * Maps a contract proposal onto the UI shape. The contract stores no category,
+ * actions or per-vote history, and counts time in ledgers, so those fields are
+ * filled with neutral defaults and ledger-based date estimates.
+ */
+export function toUiProposal(p: ChainProposal, latestLedger: number, now = Date.now()): Proposal {
+  const ledgerTime = (ledger: number) =>
+    new Date(now + (ledger - latestLedger) * SECONDS_PER_LEDGER * 1000).toISOString();
+  return {
+    id: `QIP-${String(p.id).padStart(3, "0")}`,
+    title: p.title,
+    description: p.description,
+    proposer: p.proposer,
+    // The UI has no "queued" state; a queued proposal has passed and awaits its timelock.
+    status: (p.status === "Queued" ? "passed" : p.status.toLowerCase()) as ProposalStatus,
+    startTime: ledgerTime(p.startLedger),
+    endTime: ledgerTime(p.endLedger),
+    // ponytail: raw token units; divide by the token's decimals once the UI reads them.
+    forVotes: Number(p.forVotes),
+    againstVotes: Number(p.againstVotes),
+    abstainVotes: Number(p.abstainVotes),
+    quorumRequired: Number(p.quorumRequired),
+    category: "General",
+    actions: [],
+    votes: [],
+  };
 }

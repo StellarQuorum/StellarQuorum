@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { Scale, Vote, CheckSquare, ArrowRight } from "lucide-react";
-import { PROPOSALS } from "@/lib/proposals";
+import { getProposals } from "@/lib/proposals";
 import ProposalCard from "@/components/ProposalCard";
 
-export default function Home() {
-  const activeCount = PROPOSALS.filter(p => p.status === "active").length;
-  const recentProposals = PROPOSALS.slice(0, 4);
+// Read on-chain state per request rather than baking it in at build time.
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const proposals = await getProposals();
+  const activeCount = proposals.filter(p => p.status === "active").length;
+  const recentProposals = proposals.slice(0, 4);
 
   return (
     <div className="flex flex-col">
@@ -38,7 +42,7 @@ export default function Home() {
       <section className="py-10 border-b border-[#1a2535] bg-[#0a0f18]">
         <div className="max-w-4xl mx-auto px-6 flex justify-center gap-16 text-center">
           {[
-            { value: "8", label: "Total Proposals" },
+            { value: `${proposals.length}`, label: "Total Proposals" },
             { value: `${activeCount}`, label: "Active Votes" },
             { value: "1.2M XLM", label: "Total Governed" },
           ].map(s => (
