@@ -89,6 +89,21 @@ MIT — free to use, modify, and distribute.
 
 ## SDK Reference
 
+### Install
+
+```bash
+npm install @quorum/sdk
+# Optional — only if you use the Freighter signing helper
+npm install @stellar/freighter-api
+```
+
+The package ships ESM and CJS builds, so both styles work:
+
+```typescript
+import { QuorumClient } from '@quorum/sdk';        // ESM / bundlers
+const { QuorumClient } = require('@quorum/sdk');   // CommonJS
+```
+
 ### `QuorumClient`
 
 ```typescript
@@ -113,6 +128,57 @@ await client.buildFinalize(proposalId);
 await client.buildExecute(proposalId);
 ```
 
+### Signing with Freighter
+
+`build*` returns unsigned XDR. The helper behind the optional
+`@quorum/sdk/freighter` entry point detects the extension, requests access and
+signs in one call — the package root never loads it, so Node consumers are
+unaffected:
+
+```typescript
+import { signWithFreighter, FreighterError, FreighterErrorCode } from '@quorum/sdk/freighter';
+
+try {
+  const xdr = await client.buildVote(voter, proposalId, 1);
+  const { signedXdr, signerAddress } = await signWithFreighter(xdr, {
+    networkPassphrase: TESTNET.networkPassphrase!,
+  });
+  // submit signedXdr with your RPC of choice
+} catch (e) {
+  if (e instanceof FreighterError && e.code === FreighterErrorCode.Locked) {
+    // prompt the user to unlock the wallet
+  }
+}
+```
+
+Failures are always a `FreighterError` with a `code`: `NOT_INSTALLED`,
+`LOCKED`, `ACCESS_DENIED`, `SIGNING_REJECTED` or `WALLET_ERROR`.
+`isFreighterAvailable()` and `getFreighterAddress()` cover connect flows.
+
+### Decoding contract events
+
+Every event the governance and token contracts emit has a TypeScript type and
+a decoder, so consumers (for example real-time vote counts) never touch raw
+XDR:
+
+```typescript
+import { decodeEvent, decodeEvents } from '@quorum/sdk';
+
+const events = await server.getEvents({ filters: [{ type: 'contract' }] });
+for (const raw of decodeEvents(events.events)) {
+  switch (raw.type) {
+    case 'vote_cast':            // proposalId, voter, support, votingPower
+    case 'proposal_finalized':   // id, status, forVotes, againstVotes, abstainVotes
+    case 'transfer':             // from, to, amount
+  }
+}
+```
+
+Known topics: `proposal_created`, `vote_cast`, `proposal_finalized`,
+`proposal_queued`, `proposal_executed`, `proposal_cancelled`, `transfer`,
+`mint`, `burn`, `approve`, `admin_transferred`. Unknown topics decode to
+`null` and are skipped rather than throwing.
+
 ### Contract errors
 
 Contract failures surface as `Error(Contract, #N)`. `GovernanceError` and `TokenError` mirror the Rust `#[contracterror]` enums with the same codes:
@@ -124,6 +190,14 @@ try { /* ... */ } catch (e) {
   if (parseGovernanceError(e) === GovernanceError.QuorumNotReached) { /* ... */ }
 }
 ```
+
+### Releases
+
+`@quorum/sdk` releases are tagged `sdk-vX.Y.Z` and published to npm by CI with
+provenance. Pre-1.0 the package follows `0.MINOR.PATCH`: PATCH for fixes,
+MINOR for features *and* breaking changes until 1.0. See
+[docs/publishing.md](docs/publishing.md) for the scope/credential setup, the
+full versioning policy and the release checklist.
 
 ## Frontend data source
 
