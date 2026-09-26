@@ -14,6 +14,7 @@ Thank you for your interest in contributing to Quorum — on-chain governance in
 - [Contributing to the Frontend](#contributing-to-the-frontend)
 - [Contributing to the SDK](#contributing-to-the-sdk)
 - [Contributing to Documentation](#contributing-to-documentation)
+- [Drips Wave](#drips-wave)
 - [Commit Convention](#commit-convention)
 - [Pull Request Process](#pull-request-process)
 - [Code of Conduct](#code-of-conduct)
@@ -289,6 +290,51 @@ Good documentation is as important as code. All documentation lives in `docs/` (
 
 ---
 
+## Drips Wave
+
+Quorum participates in the Stellar Wave on Drips Network. Tagged issues earn
+Points during each sprint cycle so contributors can identify which work is
+rewarded before they start.
+
+### Points Labels
+
+Maintainers add one `drips:*` points label to each approved issue to show the
+expected reward size before work starts:
+
+| Label | Typical scope | Examples |
+|---|---|---|
+| `drips:1` | Small task | Docs edits, copy fixes, styling tweaks, good first issues |
+| `drips:3` | Medium task | New component, focused test coverage, SDK method |
+| `drips:5` | Large task | New page, contract function, integration flow |
+| `drips:8` | Complex task | Full feature, security-sensitive work, multi-package change |
+
+If an issue grows during implementation, discuss the new scope in the issue
+before changing the label. Avoid adding more than one points label to the same
+issue. If an issue is missing a points label, ask for sizing before opening a PR.
+
+### Contributor Flow
+
+1. Pick an open issue with a `drips:*` label and confirm it is not already
+   assigned or claimed.
+2. Comment `/attempt #ISSUE_NUMBER` with a short plan before starting work.
+3. Keep the change focused on the issue acceptance criteria.
+4. Run the relevant frontend, SDK, or contract checks and include the commands
+   in the pull request.
+5. Open a pull request with `/claim #ISSUE_NUMBER` and link the issue.
+
+Pull requests without an issue link or claim marker may still be reviewed, but
+they may not be tracked correctly by Drips Wave automation.
+
+### Maintainer Setup Checklist
+
+- Apply to the Stellar Wave program at <https://www.drips.network/wave>.
+- Label approved issues with exactly one `drips:*` points label.
+- Pin a "Drips Wave active" issue during active sprint cycles that lists the
+  eligible tasks for that cycle.
+- Keep this guide updated if the reward program or sprint cadence changes.
+
+---
+
 ## Commit Convention
 
 Quorum uses [Conventional Commits](https://www.conventionalcommits.org/).
@@ -353,14 +399,10 @@ chore(ci): add cargo-audit security scanning to CI pipeline
 
 ## Code of Conduct
 
-Quorum is committed to a welcoming, inclusive community.
-
-- Be respectful and constructive in all interactions
-- Assume good intent from other contributors
-- Focus critique on code and ideas, never on people
-- Report harassment or violations to the maintainers
-
-We follow the [Contributor Covenant Code of Conduct](https://www.contributor-covenant.org/).
+Everyone taking part in this project is expected to follow our
+[Code of Conduct](CODE_OF_CONDUCT.md), based on the
+[Contributor Covenant](https://www.contributor-covenant.org/). It also explains
+how to report a problem.
 
 ---
 

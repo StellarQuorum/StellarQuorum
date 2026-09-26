@@ -58,7 +58,7 @@ Rewarded issues use `drips:*` labels to show the expected points value:
 | `drips:5` | Large tasks such as new pages or contract functions |
 | `drips:8` | Complex tasks such as full features or security-sensitive work |
 
-See [docs/contributing.md](docs/contributing.md#drips-wave) for the contributor
+See [CONTRIBUTING.md](CONTRIBUTING.md#drips-wave) for the contributor
 claim flow and maintainer setup checklist.
 
 **Good first issues:**
@@ -75,6 +75,9 @@ claim flow and maintainer setup checklist.
 1. Fork the repo and create a feature branch
 2. Make your changes with clear commit messages
 3. Open a PR referencing the issue
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, the
+[Code of Conduct](CODE_OF_CONDUCT.md), and the [CHANGELOG](CHANGELOG.md).
 
 ---
 
