@@ -540,7 +540,7 @@ interface RawProposal {
   end_ledger: number;
   queue_ledger: number;
   quorum_required: bigint;
-  status: [Proposal['status']];
+  status: [string];
 }
 
 interface RawConfig {
@@ -566,8 +566,21 @@ function decodeProposal(raw: RawProposal): Proposal {
     endLedger: raw.end_ledger,
     queueLedger: raw.queue_ledger,
     quorumRequired: raw.quorum_required,
-    status: raw.status[0],
+    status: decodeStatus(raw.status),
   };
+}
+
+const PROPOSAL_STATUSES: readonly ProposalStatus[] = [
+  'Pending', 'Active', 'Passed', 'Failed', 'Queued', 'Executed', 'Cancelled',
+];
+
+/** Unit enum variant `[name]` → ProposalStatus, rejecting names the SDK does not know. */
+function decodeStatus(raw: [string]): ProposalStatus {
+  const name = raw[0];
+  if (!(PROPOSAL_STATUSES as readonly string[]).includes(name)) {
+    throw new Error(`Unknown ProposalStatus variant: ${String(name)}`);
+  }
+  return name as ProposalStatus;
 }
 
 export const TESTNET: Partial<QuorumClientConfig> = {
