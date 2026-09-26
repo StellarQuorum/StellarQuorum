@@ -4,6 +4,20 @@ use soroban_sdk::testutils::storage::Persistent as _;
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _, MockAuth, MockAuthInvoke};
 use soroban_sdk::{IntoVal, TryFromVal, Val};
 
+// Models an action target attempting to execute the same proposal from its
+// callback after the governor has committed the Executed state.
+#[contract]
+struct ReentrantCallback;
+
+#[contractimpl]
+impl ReentrantCallback {
+    pub fn try_reenter(env: Env, governance: Address, proposal_id: u64) -> bool {
+        GovernanceContractClient::new(&env, &governance)
+            .try_execute(&proposal_id)
+            .is_err()
+    }
+}
+
 const QUORUM_BPS: u32 = 500; // 5%
 const VOTING_PERIOD: u32 = 100;
 const TIMELOCK_PERIOD: u32 = 50;
@@ -286,6 +300,40 @@ fn initialize_cannot_run_twice() {
         ),
         Err(Ok(GovernanceError::AlreadyInitialized))
     );
+}
+
+#[test]
+fn admin_can_transfer_governance_administration_and_emits_event() {
+    let env = Env::default();
+    let (admin, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let new_admin = Address::generate(&env);
+
+    governance.transfer_admin(&new_admin);
+
+    let (topics, data) = last_governance_event(&env, &governance_id);
+    assert_eq!(
+        topics,
+        (Symbol::new(&env, "admin_transferred"), admin.clone()).into_val(&env)
+    );
+    assert_eq!(
+        AdminTransferred::try_from_val(&env, &data).unwrap(),
+        AdminTransferred { previous_admin: admin, new_admin: new_admin.clone() }
+    );
+    assert_eq!(governance.get_config().admin, new_admin);
+}
+
+#[test]
+fn governance_admin_transfer_requires_current_admin_authorization() {
+    let env = Env::default();
+    let (admin, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let attacker = Address::generate(&env);
+    env.set_auths(&[]);
+
+    assert!(governance.try_transfer_admin(&attacker).is_err());
+    assert_eq!(governance.get_config().admin, admin);
+    assert!(env.events().all().is_empty());
 }
 
 // ─── Proposal creation ───────────────────────────────────────────────────────
@@ -631,6 +679,28 @@ fn execute_succeeds_once_the_timelock_has_elapsed() {
     env.ledger().set_sequence_number(queue_ledger);
     governance.execute(&Address::generate(&env), &Address::generate(&env), &proposal_id);
 
+    assert_eq!(
+        governance.get_proposal(&proposal_id).status,
+        ProposalStatus::Executed
+    );
+}
+
+#[test]
+fn malicious_action_callback_cannot_execute_a_proposal_twice() {
+    let env = Env::default();
+    let (admin, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    queue_proposal(&env, &governance, &admin, proposal_id);
+    let queue_ledger = governance.get_proposal(&proposal_id).queue_ledger;
+    env.ledger().set_sequence_number(queue_ledger);
+
+    // This callback models an action target re-entering execute after dispatch
+    // starts. The action dispatcher is not implemented yet, so invoke the
+    // malicious target immediately after the successful state transition.
+    governance.execute(&proposal_id);
+    let callback_id = env.register(ReentrantCallback, ());
+    assert!(ReentrantCallbackClient::new(&env, &callback_id)
+        .try_reenter(&governance_id, &proposal_id));
     assert_eq!(
         governance.get_proposal(&proposal_id).status,
         ProposalStatus::Executed
@@ -1092,6 +1162,66 @@ fn quorum_for_supply_rejects_overflow_instead_of_panicking() {
     );
 }
 
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn quorum_threshold_never_exceeds_supply(supply in 0i128..=(i128::MAX / 10_000), bps in 0u32..=10_000) {
+        let quorum = GovernanceContract::quorum_for_supply(supply, bps).unwrap();
+        prop_assert!(quorum <= supply);
+    }
+
+    #[test]
+    fn vote_tallies_never_exceed_their_supply(supply in 0i128..=(i128::MAX / 10_000), first_share in 0u32..=10_000, second_share in 0u32..=10_000) {
+        let first = supply * i128::from(first_share) / BPS_DENOMINATOR;
+        let remaining = supply - first;
+        let second = remaining * i128::from(second_share) / BPS_DENOMINATOR;
+        let third = remaining - second;
+
+        let tally = GovernanceContract::add_weight(0, first).unwrap();
+        let tally = GovernanceContract::add_weight(tally, second).unwrap();
+        let tally = GovernanceContract::add_weight(tally, third).unwrap();
+        prop_assert!(tally <= supply);
+    }
+
+    #[test]
+    fn quorum_integer_division_truncates_without_rounding_up(supply in 0i128..=(i128::MAX / 10_000), bps in 0u32..=10_000) {
+        let scaled = supply * i128::from(bps);
+        let quorum = GovernanceContract::quorum_for_supply(supply, bps).unwrap();
+
+        prop_assert!(quorum * BPS_DENOMINATOR <= scaled);
+        prop_assert!(scaled - quorum * BPS_DENOMINATOR < BPS_DENOMINATOR);
+    }
+}
+
+#[test]
+fn create_proposal_and_vote_stay_within_resource_budgets() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(GENESIS);
+    let (admin, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    env.ledger().set_sequence_number(OPENED);
+    let proposal_id = governance.create_proposal(
+        &admin,
+        &String::from_str(&env, "Resource baseline"),
+        &String::from_str(&env, "Measure proposal creation cost."),
+    );
+    let create_cpu = env.cost_estimate().budget().cpu_instruction_cost();
+    let create_memory = env.cost_estimate().budget().memory_bytes_cost();
+
+    governance.vote(&admin, &proposal_id, &VOTE_FOR);
+    let vote_cpu = env.cost_estimate().budget().cpu_instruction_cost();
+    let vote_memory = env.cost_estimate().budget().memory_bytes_cost();
+
+    std::println!("create_proposal budget: cpu={create_cpu}, memory={create_memory}");
+    std::println!("vote budget: cpu={vote_cpu}, memory={vote_memory}");
+    assert!(create_cpu <= 267_384, "create_proposal CPU regression: {create_cpu}");
+    assert!(vote_cpu <= 256_738, "vote CPU regression: {vote_cpu}");
+    assert!(create_memory <= 43_618, "create_proposal memory regression: {create_memory}");
+    assert!(vote_memory <= 41_472, "vote memory regression: {vote_memory}");
+}
+
 // ─── Full cross-contract lifecycle (#162) ──────────────────────────────────────
 //
 // Every other test in this file exercises one step of the lifecycle in
@@ -1165,6 +1295,10 @@ fn full_lifecycle_passes_and_executes_after_timelock() {
     let status = governance.finalize(&id);
     assert_eq!(status, ProposalStatus::Queued);
 
+    // Capture the finalize events before get_proposal(), which makes a new
+    // invocation and replaces the test environment's last-invocation events.
+    let events = governance_events(&env, &governance_id);
+
     let finalized = governance.get_proposal(&id);
     assert_eq!(finalized.for_votes, 500_000);
     assert_eq!(finalized.against_votes, 100_000);
@@ -1174,7 +1308,6 @@ fn full_lifecycle_passes_and_executes_after_timelock() {
 
     // finalize() on the passing path emits both proposal_finalized and, last,
     // proposal_queued — governance_events() preserves call order.
-    let events = governance_events(&env, &governance_id);
     assert_eq!(events.len(), 2);
     let (finalized_topics, finalized_data) = events.get(0).unwrap();
     assert_eq!(
