@@ -1,0 +1,72 @@
+name: Deploy to Stellar testnet
+
+# Manually triggered only. Requires the repository (or "testnet" environment)
+# secret STELLAR_TESTNET_SECRET_KEY: a funded testnet account secret key (S...).
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to deploy
+        required: false
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-testnet
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy token and governance contracts
+    runs-on: ubuntu-latest
+    environment: testnet
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            contracts/target
+          key: cargo-deploy-${{ hashFiles('contracts/Cargo.lock') }}
+          restore-keys: cargo-
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --features opt
+      - name: Import deployer key
+        env:
+          STELLAR_TESTNET_SECRET_KEY: ${{ secrets.STELLAR_TESTNET_SECRET_KEY }}
+        run: |
+          if [ -z "$STELLAR_TESTNET_SECRET_KEY" ]; then
+            echo "::error::Secret STELLAR_TESTNET_SECRET_KEY is not set"
+            exit 1
+          fi
+          # Read from the environment; never echoed or written into the repo.
+          printf '%s' "$STELLAR_TESTNET_SECRET_KEY" | stellar keys add deployer --secret-key
+      - name: Deploy contracts
+        env:
+          NETWORK: testnet
+          SOURCE_ACCOUNT: deployer
+          DEPLOY_OUTPUT: deployment-testnet.json
+        run: bash scripts/deploy.sh
+      - name: Summarize deployment
+        run: |
+          {
+            echo '### Testnet deployment'
+            echo '```json'
+            cat deployment-testnet.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload deployed contract IDs
+        uses: actions/upload-artifact@v4
+        with:
+          name: testnet-deployment-${{ github.run_id }}
+          path: deployment-testnet.json
+          if-no-files-found: error
