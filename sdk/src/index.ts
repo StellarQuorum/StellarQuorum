@@ -1,2 +1,3 @@
 export { QuorumClient, TESTNET, MAINNET } from './client';
-export type { Proposal, GovernanceConfig, QuorumClientConfig, VoteSupport } from './types';
+export { GovernanceError, TokenError, contractErrorCode, parseGovernanceError, parseTokenError } from './errors';
+export type { Proposal, ProposalStatus, GovernanceConfig, QuorumClientConfig, VoteSupport } from './types';

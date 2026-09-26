@@ -104,9 +104,36 @@ await client.getConfig();               // Protocol config (quorum, voting perio
 await client.hasVoted(1n, 'G...');      // Check if address voted
 await client.getVote(1n, 'G...');       // How they voted: 0=Against, 1=For, 2=Abstain, null=not voted
 
+await client.getLatestLedger();
+// Current ledger sequence, for converting proposal ledgers to dates
 // Build transactions (returns unsigned XDR for Freighter signing)
 await client.buildCreateProposal(address, title, description);
 await client.buildVote(voter, proposalId, support); // support: 0=Against, 1=For, 2=Abstain
 await client.buildFinalize(proposalId);
 await client.buildExecute(proposalId);
 ```
+
+### Contract errors
+
+Contract failures surface as `Error(Contract, #N)`. `GovernanceError` and `TokenError` mirror the Rust `#[contracterror]` enums with the same codes:
+
+```typescript
+import { parseGovernanceError, GovernanceError } from '@quorum/sdk';
+
+try { /* ... */ } catch (e) {
+  if (parseGovernanceError(e) === GovernanceError.QuorumNotReached) { /* ... */ }
+}
+```
+
+## Frontend data source
+
+The frontend reads proposals from the governance contract through `QuorumClient`. Configure it with environment variables (e.g. in `frontend/.env.local`):
+
+| Variable | Default | |
+|---|---|---|
+| `NEXT_PUBLIC_GOVERNANCE_CONTRACT_ID` | — | Governance contract to read. |
+| `NEXT_PUBLIC_STELLAR_RPC_URL` | testnet RPC | Soroban RPC endpoint. |
+| `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | testnet | Network passphrase. |
+| `NEXT_PUBLIC_USE_FIXTURE` | — | Set to `1` to serve the bundled mock proposals instead. |
+
+The mock fixture in `frontend/lib/proposals.ts` is also used whenever no contract ID is set, so `npm run dev` works offline without a deployment. The frontend depends on the local SDK, so build it first: `npm run build:sdk`.

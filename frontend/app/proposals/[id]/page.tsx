@@ -1,15 +1,13 @@
-'use client';
-
-import { use } from "react";
 import Link from "next/link";
 import { ArrowLeft, Clock, User } from "lucide-react";
 import { getProposalById } from "@/lib/proposals";
 import StatusBadge from "@/components/StatusBadge";
 import VoteBar from "@/components/VoteBar";
+import VoteButtons from "@/components/VoteButtons";
 
-export default function ProposalDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const proposal = getProposalById(id);
+export default async function ProposalDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const proposal = await getProposalById(id);
 
   if (!proposal) {
     return (
@@ -102,11 +100,7 @@ export default function ProposalDetailPage({ params }: { params: Promise<{ id: s
       {proposal.status === "active" && (
         <div className="p-5 rounded-xl bg-[#0d1520] border border-blue-800/40 mb-6">
           <h2 className="font-semibold text-white mb-3">Cast Your Vote</h2>
-          <div className="flex gap-3 mb-3">
-            <button onClick={() => alert("Connect your Freighter wallet to vote. Testnet integration in progress.")} aria-label="Vote For proposal" className="flex-1 py-2.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-sm transition-colors">Vote For</button>
-            <button onClick={() => alert("Connect your Freighter wallet to vote. Testnet integration in progress.")} className="flex-1 py-2.5 rounded-lg bg-red-800 hover:bg-red-700 text-white font-semibold text-sm transition-colors">Vote Against</button>
-            <button onClick={() => alert("Connect your Freighter wallet to vote. Testnet integration in progress.")} className="flex-1 py-2.5 rounded-lg bg-[#162032] hover:bg-[#1a2a40] text-slate-300 font-semibold text-sm border border-[#1a2535] transition-colors">Abstain</button>
-          </div>
+          <VoteButtons />
           <p className="text-xs text-slate-500">Connect your Freighter wallet to vote — testnet integration in progress.</p>
         </div>
       )}

@@ -1,5 +1,6 @@
 import { SorobanRpc, Contract, TransactionBuilder, BASE_FEE, nativeToScVal, scValToNative, Address, Account, xdr } from '@stellar/stellar-sdk';
 import type { Proposal, GovernanceConfig, QuorumClientConfig, VoteSupport } from './types';
+import { GovernanceError, parseGovernanceError } from './errors';
 
 /**
  * Source account used for read-only simulation.
@@ -23,19 +24,31 @@ export class QuorumClient {
 
   // ─── Read ────────────────────────────────────────────────────────────────
 
+  /** A proposal by id, or `null` if the contract reports ProposalNotFound. */
   async getProposal(id: bigint): Promise<Proposal | null> {
-    // TODO: implement via simulateTransaction → governance.get_proposal(id)
-    throw new Error('Not implemented');
+    try {
+      const raw = await this.simulate<RawProposal>('get_proposal', nativeToScVal(id, { type: 'u64' }));
+      return decodeProposal(raw);
+    } catch (error) {
+      if (parseGovernanceError(error) === GovernanceError.ProposalNotFound) return null;
+      throw error;
+    }
   }
 
   async getProposalCount(): Promise<bigint> {
-    // TODO: implement via simulateTransaction → governance.get_proposal_count()
-    throw new Error('Not implemented');
+    return BigInt(await this.simulate<bigint | number>('get_proposal_count'));
   }
 
   async getConfig(): Promise<GovernanceConfig> {
-    // TODO: implement via simulateTransaction → governance.get_config()
-    throw new Error('Not implemented');
+    const raw = await this.simulate<RawConfig>('get_config');
+    return {
+      token: raw.token,
+      quorumBps: raw.quorum_bps,
+      votingPeriod: raw.voting_period,
+      timelockPeriod: raw.timelock_period,
+      proposalThreshold: raw.proposal_threshold,
+      admin: raw.admin,
+    };
   }
 
   async hasVoted(proposalId: bigint, voter: string): Promise<boolean> {
@@ -60,6 +73,11 @@ export class QuorumClient {
     );
     // The contract returns Option<u32>; None decodes to null/undefined.
     return support === null || support === undefined ? null : (support as VoteSupport);
+  }
+
+  /** Sequence of the latest closed ledger, for turning proposal ledgers into times. */
+  async getLatestLedger(): Promise<number> {
+    return (await this.server.getLatestLedger()).sequence;
   }
 
   async getProposalsByStatus(status: Proposal['status']): Promise<Proposal[]> {
@@ -128,6 +146,54 @@ export class QuorumClient {
     // TODO: build transaction → governance.execute(proposalId)
     throw new Error('Not implemented');
   }
+}
+
+// ─── Decoding ──────────────────────────────────────────────────────────────
+// scValToNative output for the contract's #[contracttype] structs: field names
+// stay snake_case, i128/u64 become bigint, u32 becomes number, Address becomes
+// a strkey string, and a unit enum variant becomes a one-element [name] array.
+
+interface RawProposal {
+  id: bigint;
+  proposer: string;
+  title: string;
+  description: string;
+  for_votes: bigint;
+  against_votes: bigint;
+  abstain_votes: bigint;
+  snapshot_ledger: number;
+  start_ledger: number;
+  end_ledger: number;
+  queue_ledger: number;
+  quorum_required: bigint;
+  status: [Proposal['status']];
+}
+
+interface RawConfig {
+  token: string;
+  quorum_bps: number;
+  voting_period: number;
+  timelock_period: number;
+  proposal_threshold: bigint;
+  admin: string;
+}
+
+function decodeProposal(raw: RawProposal): Proposal {
+  return {
+    id: raw.id,
+    proposer: raw.proposer,
+    title: raw.title,
+    description: raw.description,
+    forVotes: raw.for_votes,
+    againstVotes: raw.against_votes,
+    abstainVotes: raw.abstain_votes,
+    snapshotLedger: raw.snapshot_ledger,
+    startLedger: raw.start_ledger,
+    endLedger: raw.end_ledger,
+    queueLedger: raw.queue_ledger,
+    quorumRequired: raw.quorum_required,
+    status: raw.status[0],
+  };
 }
 
 export const TESTNET: Partial<QuorumClientConfig> = {
