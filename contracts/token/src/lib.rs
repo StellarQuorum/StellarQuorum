@@ -13,6 +13,8 @@ pub enum TokenError {
     InvalidAmount         = 5,
     Overflow              = 6,
     InvalidExpiration     = 7,
+    InvalidSupply         = 8,
+    InvalidDecimals       = 9,
 }
 
 /// A balance recorded at the ledger on which it changed.
@@ -116,6 +118,9 @@ const TTL_EXTEND_TO: u32 = LEDGERS_PER_DAY * 90;
 /// offers. If governance is configured with a longer `voting_period`, raise it.
 const CHECKPOINT_RETENTION: u32 = LEDGERS_PER_DAY * 60;
 
+/// Maximum precision supported by the token's public formatting contract.
+const MAX_DECIMALS: u32 = 18;
+
 #[contract]
 pub struct QuorumToken;
 
@@ -123,6 +128,8 @@ pub struct QuorumToken;
 impl QuorumToken {
     pub fn initialize(env: Env, admin: Address, name: String, symbol: String, decimals: u32, initial_supply: i128) -> Result<(), TokenError> {
         if env.storage().instance().has(&DataKey::Admin) { return Err(TokenError::AlreadyInitialized); }
+        if initial_supply < 0 { return Err(TokenError::InvalidSupply); }
+        if decimals > MAX_DECIMALS { return Err(TokenError::InvalidDecimals); }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Name, &name);
@@ -183,6 +190,12 @@ impl QuorumToken {
         }
     }
 
+    /// Balance available to spend. This token has no locked-balance model, so
+    /// the spendable balance is the same as the current balance.
+    pub fn spendable_balance(env: Env, owner: Address) -> i128 {
+        Self::balance(env, owner)
+    }
+
     pub fn total_supply(env: Env) -> i128 {
         Self::touch_instance(&env);
         env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)
@@ -225,6 +238,47 @@ impl QuorumToken {
             },
         );
         Self::touch(&env, &key);
+        Ok(())
+    }
+
+    /// Burns `amount` from `from` on behalf of `spender`, drawing on an
+    /// allowance the owner granted with `approve`.
+    ///
+    /// The burn event names the owner whose balance and supply were reduced;
+    /// the spender is only the authorizer.
+    pub fn burn_from(env: Env, spender: Address, from: Address, amount: i128) -> Result<(), TokenError> {
+        spender.require_auth();
+        if amount <= 0 { return Err(TokenError::InvalidAmount); }
+
+        let approval = Self::live_allowance(&env, &from, &spender);
+        if approval.amount < amount { return Err(TokenError::InsufficientAllowance); }
+
+        let bal = Self::balance(env.clone(), from.clone());
+        if bal < amount { return Err(TokenError::InsufficientBalance); }
+        let supply = Self::total_supply(env.clone());
+        let total_supply = supply
+            .checked_sub(amount)
+            .filter(|remaining| *remaining >= 0)
+            .ok_or(TokenError::Overflow)?;
+
+        // Complete all validation before mutating the balance or allowance.
+        Self::set_balance(&env, &from, bal - amount);
+        env.storage().instance().set(&DataKey::TotalSupply, &total_supply);
+
+        let key = DataKey::Allowance(from.clone(), spender);
+        env.storage().persistent().set(
+            &key,
+            &AllowanceValue {
+                amount: approval.amount - amount,
+                expiration_ledger: approval.expiration_ledger,
+            },
+        );
+        Self::touch(&env, &key);
+
+        env.events().publish(
+            (Symbol::new(&env, "burn"), from.clone()),
+            Burn { from, amount, total_supply },
+        );
         Ok(())
     }
 

@@ -15,6 +15,13 @@ SEP-41 compatible governance token for the Quorum protocol.
   `i128::MAX`, and `burn` returns `Overflow` rather than take total supply below
   zero. Neither traps, and a refused call changes nothing.
 
+`burn_from` lets an approved spender burn against the owner's allowance and
+emits a burn event naming that owner. `spendable_balance` is equal to `balance`
+because this token has no locked balances.
+
+Initialization accepts decimal precision from 0 through 18 and rejects a
+negative initial supply. A zero initial supply is valid for tokens minted later.
+
 ## Allowance expiry
 
 `approve(owner, spender, amount, expiration_ledger)` stores the expiry

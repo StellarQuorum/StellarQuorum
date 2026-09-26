@@ -38,6 +38,59 @@ fn initialize_sets_metadata_supply_and_admin_balance() {
 }
 
 #[test]
+fn initialize_accepts_zero_supply_for_later_minting() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let token_id = env.register(QuorumToken, ());
+    let token = QuorumTokenClient::new(&env, &token_id);
+
+    token.initialize(
+        &admin,
+        &String::from_str(&env, "Quorum"),
+        &String::from_str(&env, "QUORUM"),
+        &18,
+        &0,
+    );
+
+    assert_eq!(token.total_supply(), 0);
+    assert_eq!(token.balance(&admin), 0);
+}
+
+#[test]
+fn initialize_rejects_negative_supply_and_decimals_above_eighteen() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let negative_id = env.register(QuorumToken, ());
+    let negative = QuorumTokenClient::new(&env, &negative_id);
+
+    assert_eq!(
+        negative.try_initialize(
+            &admin,
+            &String::from_str(&env, "Quorum"),
+            &String::from_str(&env, "QUORUM"),
+            &7,
+            &-1,
+        ),
+        Err(Ok(TokenError::InvalidSupply))
+    );
+
+    let decimals_id = env.register(QuorumToken, ());
+    let decimals = QuorumTokenClient::new(&env, &decimals_id);
+    assert_eq!(
+        decimals.try_initialize(
+            &admin,
+            &String::from_str(&env, "Quorum"),
+            &String::from_str(&env, "QUORUM"),
+            &19,
+            &0,
+        ),
+        Err(Ok(TokenError::InvalidDecimals))
+    );
+}
+
+#[test]
 fn initialize_cannot_run_twice() {
     let env = Env::default();
     let (admin, token) = deploy(&env);
@@ -63,6 +116,16 @@ fn balance_of_an_unknown_address_is_zero() {
     let (_, token) = deploy(&env);
 
     assert_eq!(token.balance(&Address::generate(&env)), 0);
+}
+
+#[test]
+fn spendable_balance_matches_balance() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let holder = Address::generate(&env);
+    token.transfer(&admin, &holder, &12_345);
+
+    assert_eq!(token.spendable_balance(&holder), token.balance(&holder));
 }
 
 // ─── Transfer ────────────────────────────────────────────────────────────────
@@ -319,6 +382,64 @@ fn burn_lowers_the_holder_balance_and_total_supply() {
 
     assert_eq!(token.balance(&admin), INITIAL_SUPPLY - 400_000);
     assert_eq!(token.total_supply(), INITIAL_SUPPLY - 400_000);
+}
+
+#[test]
+fn burn_from_spends_allowance_and_emits_owner_burn_event() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let spender = Address::generate(&env);
+    token.approve(&admin, &spender, &50_000, &FAR_FUTURE);
+
+    token.burn_from(&spender, &admin, &20_000);
+
+    let (topics, data) = last_event(&env);
+
+    assert_eq!(token.balance(&admin), INITIAL_SUPPLY - 20_000);
+    assert_eq!(token.total_supply(), INITIAL_SUPPLY - 20_000);
+    assert_eq!(token.allowance(&admin, &spender), 30_000);
+
+    assert_eq!(
+        topics,
+        (Symbol::new(&env, "burn"), admin.clone()).into_val(&env)
+    );
+    assert_eq!(
+        Burn::try_from_val(&env, &data).unwrap(),
+        Burn { from: admin, amount: 20_000, total_supply: INITIAL_SUPPLY - 20_000 }
+    );
+}
+
+#[test]
+fn burn_from_rejects_insufficient_allowance_without_changes() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let spender = Address::generate(&env);
+    token.approve(&admin, &spender, &10_000, &FAR_FUTURE);
+
+    assert_eq!(
+        token.try_burn_from(&spender, &admin, &10_001),
+        Err(Ok(TokenError::InsufficientAllowance))
+    );
+    assert_eq!(token.balance(&admin), INITIAL_SUPPLY);
+    assert_eq!(token.total_supply(), INITIAL_SUPPLY);
+    assert_eq!(token.allowance(&admin, &spender), 10_000);
+}
+
+#[test]
+fn burn_from_rejects_an_expired_allowance() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(100);
+    let (admin, token) = deploy(&env);
+    let spender = Address::generate(&env);
+    token.approve(&admin, &spender, &50_000, &200);
+
+    env.ledger().set_sequence_number(201);
+    assert_eq!(
+        token.try_burn_from(&spender, &admin, &1_000),
+        Err(Ok(TokenError::InsufficientAllowance))
+    );
+    assert_eq!(token.balance(&admin), INITIAL_SUPPLY);
+    assert_eq!(token.total_supply(), INITIAL_SUPPLY);
 }
 
 #[test]
