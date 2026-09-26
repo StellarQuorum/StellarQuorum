@@ -22,6 +22,11 @@ export interface Proposal {
   status: ProposalStatus;
   startTime: string;
   endTime: string;
+  /**
+   * Ledger the proposal snapshotted token balances at, set when it was created.
+   * A vote's weight is the voter's balance here, not their current balance.
+   */
+  snapshotLedger: number;
   forVotes: number;
   againstVotes: number;
   abstainVotes: number;

@@ -4,6 +4,7 @@ import { getProposalById } from "@/lib/proposals";
 import StatusBadge from "@/components/StatusBadge";
 import VoteBar from "@/components/VoteBar";
 import VoteButtons from "@/components/VoteButtons";
+import VotingPowerPreview from "@/components/VotingPowerPreview";
 
 export default async function ProposalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -100,6 +101,10 @@ export default async function ProposalDetailPage({ params }: { params: Promise<{
       {proposal.status === "active" && (
         <div className="p-5 rounded-xl bg-[#0d1520] border border-blue-800/40 mb-6">
           <h2 className="font-semibold text-white mb-3">Cast Your Vote</h2>
+          {/* Above the buttons on purpose: a vote is weighted by the balance at
+              the proposal's snapshot ledger, which is not necessarily the
+              balance the wallet shows now. */}
+          <VotingPowerPreview snapshotLedger={proposal.snapshotLedger} />
           <VoteButtons />
           <p className="text-xs text-slate-500">Connect your Freighter wallet to vote — testnet integration in progress.</p>
         </div>

@@ -282,6 +282,21 @@ export class QuorumClient {
   // ─── Internals ───────────────────────────────────────────────────────────
 
   /**
+   * The token contract, resolved on first use.
+   *
+   * `tokenContractId` is the deployment-time hint. When it is absent the
+   * governance config is the authority, so a caller that only knows the
+   * governance contract still gets correct balances.
+   */
+  private async tokenContract(): Promise<Contract> {
+    if (this.config.tokenContractId) {
+      return new Contract(this.config.tokenContractId);
+    }
+    const { token } = await this.getConfig();
+    return new Contract(token);
+  }
+
+  /**
    * Calls a read-only contract method through `simulateTransaction` and decodes
    * the return value.
    *

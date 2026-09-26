@@ -17,6 +17,7 @@ function proposal(overrides: Partial<Proposal>): Proposal {
     status: "active",
     startTime: "2026-05-25T00:00:00Z",
     endTime: "2026-06-06T00:00:00Z",
+    snapshotLedger: 61_284_512,
     forVotes: 600000,
     againstVotes: 300000,
     abstainVotes: 100000,
