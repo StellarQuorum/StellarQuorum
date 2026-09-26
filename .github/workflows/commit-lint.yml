@@ -1,0 +1,61 @@
+name: Conventional Commits
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Validate PR title and commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check PR title and commit subjects
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Types and scopes mirror the "Commit Convention" in CONTRIBUTING.md.
+          # Scopes follow the repository layout (top-level packages/directories).
+          TYPES='feat|fix|docs|style|refactor|test|chore|perf|ci'
+          SCOPES='contracts|governance|token|frontend|sdk|tests|docs|ci|scripts|deps'
+          PATTERN="^(${TYPES})(\((${SCOPES})\))?!?: .+"
+
+          explain() {
+            echo "::error::$1"
+            echo
+            echo "Expected format:"
+            echo "  <type>(<scope>): <short description>"
+            echo
+            echo "Allowed types:  ${TYPES//|/, }"
+            echo "Allowed scopes: ${SCOPES//|/, } (scope is optional)"
+            echo "Example:        feat(contracts): implement delegate() for voting power delegation"
+            echo
+            echo "See the 'Commit Convention' section of CONTRIBUTING.md."
+          }
+
+          fail=0
+
+          if ! [[ "$PR_TITLE" =~ $PATTERN ]] || [ "${#PR_TITLE}" -gt 100 ]; then
+            explain "PR title does not follow the convention (max 100 chars): $PR_TITLE"
+            fail=1
+          fi
+
+          # Individual commits (merge commits are skipped).
+          while IFS= read -r line; do
+            sha="${line%% *}"
+            subject="${line#* }"
+            if ! [[ "$subject" =~ $PATTERN ]]; then
+              explain "Commit $sha does not follow the convention: $subject"
+              fail=1
+            fi
+          done < <(git log --no-merges --format='%h %s' "$BASE_SHA..$HEAD_SHA")
+
+          exit $fail

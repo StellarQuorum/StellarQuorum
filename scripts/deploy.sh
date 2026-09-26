@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploy Quorum contracts to Stellar testnet or mainnet
-# Usage: NETWORK=testnet SOURCE_ACCOUNT=G... bash scripts/deploy.sh
+# Usage: NETWORK=testnet SOURCE_ACCOUNT=<key alias or G...> bash scripts/deploy.sh
+# Optional: DEPLOY_OUTPUT=path writes the deployed contract IDs to a JSON file.
 set -euo pipefail
 
 NETWORK="${NETWORK:-testnet}"
@@ -52,3 +53,15 @@ echo ""
 echo "Done. Add to your .env.local:"
 echo "NEXT_PUBLIC_GOVERNANCE_CONTRACT=$GOV_ID"
 echo "NEXT_PUBLIC_TOKEN_CONTRACT=$TOKEN_ID"
+
+if [[ -n "${DEPLOY_OUTPUT:-}" ]]; then
+  cat > "$DEPLOY_OUTPUT" <<JSON
+{
+  "network": "$NETWORK",
+  "commit": "$(git rev-parse HEAD 2>/dev/null || echo unknown)",
+  "token_contract": "$TOKEN_ID",
+  "governance_contract": "$GOV_ID"
+}
+JSON
+  echo "Wrote deployment record to $DEPLOY_OUTPUT"
+fi
