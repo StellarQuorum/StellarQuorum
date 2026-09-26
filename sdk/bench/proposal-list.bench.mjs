@@ -223,10 +223,10 @@ async function measure(runs, scenario) {
 function loadBuiltSdk() {
   const require = createRequire(import.meta.url);
   try {
-    return require("../dist/index.js");
+    return require("../dist/cjs/index.js");
   } catch (error) {
     throw new Error(
-      `Could not load sdk/dist/index.js (${error.message}). Build the SDK first: cd sdk && npm run build`,
+      `Could not load sdk/dist/cjs/index.js (${error.message}). Build the SDK first: cd sdk && npm run build`,
     );
   }
 }
