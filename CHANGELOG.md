@@ -75,6 +75,13 @@ are marked **BREAKING** below.
 
 ### Fixed
 
+- CI: the contracts job now caches the cargo registry and build artifacts through
+  `Swatinem/rust-cache`, keyed on `Cargo.lock`, the rustc version and workspace
+  metadata. The previous `actions/cache` key only moved with `Cargo.lock`, so a
+  toolchain bump restored artifacts built by the old rustc under a key that still
+  hit — every crate rebuilt and the post-job step never re-saved, leaving the job
+  wedged on cold builds. The job also reports its cache hit and duration in the
+  run summary, so the reduction is measurable. (2026-09-26)
 - Contracts: pinned `ed25519-dalek` to 2.2.0 so `cargo test` compiles.
   (2026-09-10)
 - CI: repaired the frontend job, gated the contracts job on clippy, and added
