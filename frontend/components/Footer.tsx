@@ -14,7 +14,7 @@ export default function Footer() {
                 title={link.description}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-slate-400 hover:text-slate-200 hover:underline underline-offset-4 transition-colors"
+                className="text-slate-400 hover:text-slate-200 focus-visible:text-slate-200 hover:underline focus-visible:underline underline-offset-4 transition-colors"
               >
                 {link.label}
               </a>

@@ -14,7 +14,7 @@ export default async function ProposalDetailPage({ params }: { params: Promise<{
     return (
       <div className="max-w-3xl mx-auto px-6 py-24 text-center">
         <h1 className="text-2xl font-bold text-white mb-4">Proposal not found</h1>
-        <Link href="/proposals" className="text-blue-400 hover:text-blue-300">← Back to proposals</Link>
+        <Link href="/proposals" className="text-blue-400 hover:text-blue-300 focus-visible:text-blue-300">← Back to proposals</Link>
       </div>
     );
   }
@@ -33,7 +33,7 @@ export default async function ProposalDetailPage({ params }: { params: Promise<{
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-12">
-      <Link href="/proposals" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-300 mb-8 transition-colors">
+      <Link href="/proposals" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-300 focus-visible:text-slate-300 mb-8 transition-colors">
         <ArrowLeft size={14} /> Back to proposals
       </Link>
 

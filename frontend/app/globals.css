@@ -1,6 +1,27 @@
 @import "tailwindcss";
 
-body {
-  background-color: #080c10;
-  color: #f1f5f9;
+@layer base {
+  body {
+    background-color: #080c10;
+    color: #f1f5f9;
+  }
+
+  /*
+   * One keyboard-focus indicator for the whole app.
+   *
+   * Interactive elements signal themselves with hover styles, which keyboard
+   * focus never triggers, and the browser default outline is inconsistent
+   * across browsers and elements (and is suppressed outright on the create
+   * form). :focus-visible matches keyboard focus only, so pointer users keep
+   * the clean hover-only design while tabbing users always see where they are.
+   *
+   * Lives in the base layer on purpose: utilities can still override it for
+   * elements that need a different treatment, but nothing does by default.
+   */
+  :focus-visible {
+    /* blue-400: the accent the logo and links already use, so the ring looks
+       intentional on every surface, dark or light. */
+    outline: 2px solid #60a5fa;
+    outline-offset: 2px;
+  }
 }

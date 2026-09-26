@@ -36,7 +36,9 @@ export default function CreatePage() {
   const set = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const inputClass = "w-full bg-[#0a0f18] border border-[#1a2535] rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-600 transition-colors";
+  // Deliberately no outline suppression on these fields: the global
+  // :focus-visible ring in globals.css is their keyboard indicator.
+  const inputClass = "w-full bg-[#0a0f18] border border-[#1a2535] rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:border-blue-600 transition-colors";
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
@@ -51,7 +53,7 @@ export default function CreatePage() {
             Your proposal <strong className="text-white">&ldquo;{form.title}&rdquo;</strong> has been submitted to the Stellar testnet in simulation mode.
           </p>
           <p className="text-sm text-slate-500">Connect a Freighter wallet for live mainnet submissions.</p>
-          <button onClick={() => setSubmitted(false)} className="mt-6 px-6 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors">
+          <button onClick={() => setSubmitted(false)} className="mt-6 px-6 py-2 bg-blue-700 hover:bg-blue-600 focus-visible:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors">
             Create Another
           </button>
         </div>
@@ -120,7 +122,7 @@ export default function CreatePage() {
           )}
 
           <div className="flex flex-col gap-3">
-            <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold transition-colors">
+            <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-500 focus-visible:bg-blue-500 text-white rounded-lg font-semibold transition-colors">
               Submit Proposal
             </button>
             <p className="text-xs text-slate-500 text-center">Submitting requires a Freighter wallet and QUORUM tokens. Live mainnet submission coming soon.</p>
