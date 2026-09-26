@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 //! QUORUM — governance token for the Quorum protocol. SEP-41 compatible.
 use soroban_sdk::{contract, contractimpl, contracttype, contracterror, Address, Env, String, Symbol, Vec};
 
@@ -91,6 +91,7 @@ pub enum DataKey {
     Balance(Address),
     Allowance(Address, Address),
     Checkpoints(Address),
+    PendingAdmin,
 }
 
 /// Ledgers in roughly one day, at Stellar's ~5 second close time.
@@ -137,6 +138,10 @@ impl QuorumToken {
             Mint { to: admin, amount: initial_supply, total_supply: initial_supply },
         );
         Ok(())
+    }
+
+    pub fn version(env: Env) -> String {
+        String::from_str(&env, env!("CARGO_PKG_VERSION"))
     }
 
     /// Balance of `owner` as of the end of `ledger`.
@@ -304,12 +309,29 @@ impl QuorumToken {
     pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), TokenError> {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
+        Ok(())
+    }
+
+    pub fn accept_admin(env: Env) -> Result<(), TokenError> {
+        let pending: Address = env.storage().instance().get(&DataKey::PendingAdmin)
+            .ok_or(TokenError::Unauthorized)?;
+        pending.require_auth();
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        env.storage().instance().set(&DataKey::Admin, &pending);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
 
         env.events().publish(
             (Symbol::new(&env, "admin_transferred"), admin.clone()),
-            AdminTransferred { previous_admin: admin, new_admin },
+            AdminTransferred { previous_admin: admin, new_admin: pending },
         );
+        Ok(())
+    }
+
+    pub fn cancel_admin_transfer(env: Env) -> Result<(), TokenError> {
+        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        env.storage().instance().remove(&DataKey::PendingAdmin);
         Ok(())
     }
 
