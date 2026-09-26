@@ -335,6 +335,66 @@ fn burn_beyond_balance_is_rejected() {
     assert_eq!(token.total_supply(), INITIAL_SUPPLY);
 }
 
+#[test]
+fn mint_that_would_overflow_total_supply_returns_overflow() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+
+    // One more than the headroom left above the current supply.
+    assert_eq!(
+        token.try_mint(&admin, &(i128::MAX - INITIAL_SUPPLY + 1)),
+        Err(Ok(TokenError::Overflow))
+    );
+    // A rejected mint changes nothing.
+    assert_eq!(token.total_supply(), INITIAL_SUPPLY);
+    assert_eq!(token.balance(&admin), INITIAL_SUPPLY);
+}
+
+#[test]
+fn mint_up_to_the_exact_supply_ceiling_succeeds_and_the_next_unit_overflows() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+
+    token.mint(&admin, &(i128::MAX - INITIAL_SUPPLY));
+    assert_eq!(token.total_supply(), i128::MAX);
+
+    assert_eq!(token.try_mint(&admin, &1), Err(Ok(TokenError::Overflow)));
+    assert_eq!(token.total_supply(), i128::MAX);
+}
+
+#[test]
+fn burning_the_entire_supply_leaves_zero() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+
+    token.burn(&admin, &INITIAL_SUPPLY);
+
+    assert_eq!(token.total_supply(), 0);
+    assert_eq!(token.balance(&admin), 0);
+}
+
+#[test]
+fn burn_cannot_take_total_supply_below_zero() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+
+    // Normal operation keeps supply >= every balance, so corrupt the ledger
+    // directly to prove the guard holds if that invariant is ever broken.
+    env.as_contract(&token.address, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalSupply, &(INITIAL_SUPPLY - 1));
+    });
+
+    assert_eq!(
+        token.try_burn(&admin, &INITIAL_SUPPLY),
+        Err(Ok(TokenError::Overflow))
+    );
+    // The refused burn did not touch the holder or the supply.
+    assert_eq!(token.balance(&admin), INITIAL_SUPPLY);
+    assert_eq!(token.total_supply(), INITIAL_SUPPLY - 1);
+}
+
 // ─── Events ──────────────────────────────────────────────────────────────────
 //
 // The test env exposes only the most recent invocation's events, so each of
@@ -969,4 +1029,156 @@ fn get_past_balance_with_single_checkpoint() {
     assert_eq!(token.get_past_balance(&holder, &50), 777);
     assert_eq!(token.get_past_balance(&holder, &51), 777);
     assert_eq!(token.get_past_balance(&holder, &1_000), 777);
+}
+
+// ─── Storage lifetime ────────────────────────────────────────────────────────
+
+/// Remaining TTL, in ledgers, of a persistent token entry.
+fn entry_ttl(env: &Env, token_id: &Address, key: &DataKey) -> u32 {
+    env.as_contract(token_id, || env.storage().persistent().get_ttl(key))
+}
+
+/// Number of checkpoints currently stored for `owner`.
+fn checkpoint_count(env: &Env, token_id: &Address, owner: &Address) -> u32 {
+    env.as_contract(token_id, || QuorumToken::checkpoints(env, owner).len())
+}
+
+#[test]
+fn balances_checkpoints_and_allowances_start_past_the_ttl_threshold() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let spender = Address::generate(&env);
+    token.approve(&admin, &spender, &100, &FAR_FUTURE);
+
+    assert!(entry_ttl(&env, &token.address, &DataKey::Balance(admin.clone())) >= TTL_THRESHOLD);
+    assert!(entry_ttl(&env, &token.address, &DataKey::Checkpoints(admin.clone())) >= TTL_THRESHOLD);
+    assert!(entry_ttl(&env, &token.address, &DataKey::Allowance(admin, spender)) >= TTL_THRESHOLD);
+}
+
+#[test]
+fn reading_an_aged_balance_and_checkpoints_extends_their_ttl() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(10);
+    let (admin, token) = deploy(&env);
+    let holder = Address::generate(&env);
+    token.transfer(&admin, &holder, &5_000);
+
+    // Let most of the entries' life burn off, then read them.
+    env.ledger().set_sequence_number(10 + TTL_EXTEND_TO - 1_000);
+    let balance_key = DataKey::Balance(holder.clone());
+    let checkpoints_key = DataKey::Checkpoints(holder.clone());
+    let balance_before = entry_ttl(&env, &token.address, &balance_key);
+    let checkpoints_before = entry_ttl(&env, &token.address, &checkpoints_key);
+
+    token.balance(&holder);
+    token.get_past_balance(&holder, &10);
+
+    assert!(balance_before < TTL_THRESHOLD, "entry should have aged below the threshold");
+    assert!(checkpoints_before < TTL_THRESHOLD, "entry should have aged below the threshold");
+    assert!(entry_ttl(&env, &token.address, &balance_key) >= TTL_THRESHOLD);
+    assert!(entry_ttl(&env, &token.address, &checkpoints_key) >= TTL_THRESHOLD);
+}
+
+#[test]
+fn an_inactive_holder_keeps_their_voting_power_across_a_long_voting_window() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(10);
+    let (admin, token) = deploy(&env);
+    let holder = Address::generate(&env);
+    token.transfer(&admin, &holder, &5_000);
+
+    // Well past the default entry lifetime and the 30-day voting period, with
+    // nothing touching the holder's entries in between.
+    env.ledger()
+        .set_sequence_number(10 + LEDGERS_PER_DAY * 45);
+
+    assert_eq!(token.get_past_balance(&holder, &10), 5_000);
+    assert_eq!(token.balance(&holder), 5_000);
+    // Instance storage carries the admin, metadata and supply.
+    assert_eq!(token.total_supply(), INITIAL_SUPPLY);
+    assert_eq!(token.symbol(), String::from_str(&env, "QUORUM"));
+}
+
+#[test]
+fn a_live_allowance_outlives_a_long_idle_period() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(10);
+    let (admin, token) = deploy(&env);
+    let spender = Address::generate(&env);
+    token.approve(&admin, &spender, &700, &(10 + LEDGERS_PER_DAY * 60));
+
+    env.ledger()
+        .set_sequence_number(10 + LEDGERS_PER_DAY * 45);
+
+    assert_eq!(token.allowance(&admin, &spender), 700);
+}
+
+// ─── Checkpoint growth ───────────────────────────────────────────────────────
+
+#[test]
+fn checkpoints_inside_the_retention_window_are_all_kept() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(1);
+    let (admin, token) = deploy(&env);
+    let holder = Address::generate(&env);
+
+    for step in 1..=5u32 {
+        env.ledger().set_sequence_number(step * 10);
+        token.transfer(&admin, &holder, &10);
+    }
+
+    assert_eq!(checkpoint_count(&env, &token.address, &holder), 5);
+    assert_eq!(token.get_past_balance(&holder, &10), 10);
+    assert_eq!(token.get_past_balance(&holder, &50), 50);
+}
+
+#[test]
+fn checkpoints_older_than_the_retention_window_are_pruned_but_the_cutoff_balance_survives() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(1);
+    let (admin, token) = deploy(&env);
+    let holder = Address::generate(&env);
+
+    // Six transfers of 10, roughly 17 days apart: balances 10, 20, ... 60.
+    let step_ledgers = 300_000u32;
+    let mut ledgers = std::vec::Vec::new();
+    for step in 0..6u32 {
+        let ledger = if step == 0 { 1 } else { step * step_ledgers };
+        env.ledger().set_sequence_number(ledger);
+        token.transfer(&admin, &holder, &10);
+        ledgers.push(ledger);
+    }
+    let last = *ledgers.last().unwrap();
+    let cutoff = last - CHECKPOINT_RETENTION;
+
+    // Ledgers 1 and 300_000 fall before the cutoff; only the newer of the two
+    // is kept, as the balance in effect at the cutoff.
+    assert!(ledgers[0] < cutoff && ledgers[1] < cutoff && ledgers[2] >= cutoff);
+    assert_eq!(checkpoint_count(&env, &token.address, &holder), 5);
+
+    // The balance in effect at the cutoff, and everything after, still resolves.
+    assert_eq!(token.get_past_balance(&holder, &cutoff), 20);
+    assert_eq!(token.get_past_balance(&holder, &ledgers[3]), 40);
+    assert_eq!(token.get_past_balance(&holder, &last), 60);
+    assert_eq!(token.balance(&holder), 60);
+}
+
+#[test]
+fn history_just_past_the_window_keeps_one_anchor_and_the_new_entry() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(1);
+    let (admin, token) = deploy(&env);
+    let holder = Address::generate(&env);
+    token.transfer(&admin, &holder, &10);
+
+    // Just past the retention window (and still inside the entry TTL): the old
+    // entry is the only stale one, so it is kept as the anchor, and the new
+    // entry is current. Two remain rather than the history growing unbounded.
+    let later = 1 + CHECKPOINT_RETENTION + 10;
+    env.ledger().set_sequence_number(later);
+    token.transfer(&admin, &holder, &10);
+
+    assert_eq!(checkpoint_count(&env, &token.address, &holder), 2);
+    assert_eq!(token.get_past_balance(&holder, &later), 20);
+    assert_eq!(token.get_past_balance(&holder, &(later - 1)), 10);
 }

@@ -38,6 +38,13 @@ are marked **BREAKING** below.
 
 ### Added
 
+- CI: `Contract specs` workflow generates the interface spec JSON for both
+  contracts (`quorum-token.spec.json`, `quorum-governance.spec.json`), uploads it
+  as an artifact on every contracts change and attaches it to published releases.
+  (2026-09-26)
+- Token: TTL extension on `Balance`, `Checkpoints` and live `Allowance` entries
+  and on instance storage, using the governance thresholds (30 days / 90 days), so
+  snapshot voting power survives long voting windows and idle holders. (2026-09-26)
 - Token: `transfer_from()` for allowance-based spending, with the allowance
   debited only after the transfer succeeds and its original expiry preserved.
   (2026-09-18)
@@ -75,6 +82,13 @@ are marked **BREAKING** below.
 
 ### Fixed
 
+- Token: `mint()` returns `Overflow` instead of trapping when the new supply or
+  balance would exceed `i128::MAX`, and `burn()` returns it rather than taking
+  total supply below zero. (2026-09-26)
+- Token: checkpoint history older than 60 days is pruned on write, keeping the
+  newest stale entry as the balance at the cutoff, so per-address history is
+  bounded by time rather than growing for the life of the account. Snapshots
+  older than the window read as `0`. (2026-09-26)
 - CI: the contracts job now caches the cargo registry and build artifacts through
   `Swatinem/rust-cache`, keyed on `Cargo.lock`, the rustc version and workspace
   metadata. The previous `actions/cache` key only moved with `Cargo.lock`, so a
