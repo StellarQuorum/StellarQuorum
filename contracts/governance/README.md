@@ -36,3 +36,20 @@ Two different reads, deliberately:
 The snapshot read is backed by per-address balance checkpoints in the token
 contract (`get_past_balance`). A voter with no power at the snapshot is
 rejected with `NoVotingPower` rather than recording a zero-weight vote.
+
+## Resource baseline
+
+The `create_proposal_and_vote_stay_within_resource_budgets` test records
+Soroban test-host CPU and memory estimates for one `create_proposal()` and one
+`vote()` invocation (Rust test contracts; these are comparative regression
+signals, not production-Wasm fee estimates):
+
+| Invocation | CPU instructions | Memory bytes |
+|---|---:|---:|
+| `create_proposal()` | 213,907 | 34,894 |
+| `vote()` | 205,390 | 33,177 |
+
+CI assertions allow up to 25% above each baseline (267,384 / 43,618 for
+`create_proposal()` and 256,738 / 41,472 for `vote()`). Re-measure and update
+both this table and the thresholds when an intentional change materially
+alters the contract's resource use.

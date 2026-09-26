@@ -1,4 +1,7 @@
 #![no_std]
+#[cfg(test)]
+extern crate std;
+
 use soroban_sdk::{contract, contractclient, contractimpl, contracttype, contracterror, Address, Env, String, Symbol};
 
 /// Subset of the QUORUM token interface the governor depends on.
@@ -103,6 +106,13 @@ pub struct ProposalExecuted {
 pub struct ProposalCancelled {
     pub id: u64,
     pub caller: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminTransferred {
+    pub previous_admin: Address,
+    pub new_admin: Address,
 }
 
 #[contracttype]
@@ -290,6 +300,10 @@ impl GovernanceContract {
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
         if proposal.status != ProposalStatus::Queued { return Err(GovernanceError::ProposalNotPassed); }
         if env.ledger().sequence() < proposal.queue_ledger { return Err(GovernanceError::TimelockNotExpired); }
+
+        // Commit the terminal state before dispatching any proposal actions.
+        // Once action calls are added, a callee may synchronously call execute
+        // again; it must observe Executed and fail rather than dispatch twice.
         proposal.status = ProposalStatus::Executed;
         env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
         Self::touch_proposal(&env, proposal_id);
@@ -298,6 +312,22 @@ impl GovernanceContract {
         env.events().publish(
             (Symbol::new(&env, "proposal_executed"), proposal_id),
             ProposalExecuted { id: proposal_id },
+        );
+        Ok(())
+    }
+
+    /// Transfer governance administration. Only the current admin may authorize
+    /// the handover; emitting both addresses lets indexers track key rotation.
+    pub fn transfer_admin(env: Env, new_admin: Address) -> Result<(), GovernanceError> {
+        let mut config: Config = env.storage().instance().get(&DataKey::Config).unwrap();
+        let previous_admin = config.admin.clone();
+        previous_admin.require_auth();
+        config.admin = new_admin.clone();
+        env.storage().instance().set(&DataKey::Config, &config);
+
+        env.events().publish(
+            (Symbol::new(&env, "admin_transferred"), previous_admin.clone()),
+            AdminTransferred { previous_admin, new_admin },
         );
         Ok(())
     }
