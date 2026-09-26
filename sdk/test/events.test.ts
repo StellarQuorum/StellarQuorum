@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { fileURLToPath } from 'url';
 import { Address, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 import {
   EVENT_TOPICS,
@@ -9,6 +10,8 @@ import {
 } from '../src/events';
 import type { RawContractEvent } from '../src/events';
 import { enumVariant, structVal } from './xdr';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 const VOTER = 'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H';
 

@@ -1,6 +1,6 @@
-import { SorobanRpc, Contract, TransactionBuilder, BASE_FEE, nativeToScVal, scValToNative, Address, Account, xdr } from '@stellar/stellar-sdk';
-import type { Proposal, GovernanceConfig, QuorumClientConfig, VoteSupport } from './types.js';
-import { GovernanceError, parseGovernanceError } from './errors.js';
+import { rpc, Contract, TransactionBuilder, BASE_FEE, nativeToScVal, scValToNative, Address, Account, xdr } from '@stellar/stellar-sdk';
+import type { Proposal, GovernanceConfig, QuorumClientConfig, VoteSupport, GetProposalsOptions, ProposalStatus, TransactionConfirmationOptions } from './types.js';
+import { GovernanceError, parseGovernanceError, RpcTimeoutError, TransactionFailedError, contractErrorCode } from './errors.js';
 
 /**
  * Source account used for read-only simulation.
@@ -19,6 +19,12 @@ const READ_ONLY_SOURCE = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAW
  * RPC response caps, with diminishing returns above 50.
  */
 export const DEFAULT_PAGE_SIZE = 50;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+export const DEFAULT_READ_RETRY_ATTEMPTS = 2;
+export const DEFAULT_RETRY_BASE_DELAY_MS = 100;
+export const DEFAULT_RETRY_JITTER_MS = 50;
+export const DEFAULT_POLL_INTERVAL_MS = 1_000;
+export const DEFAULT_CONFIRMATION_TIMEOUT_MS = 60_000;
 
 // ─── Typed governance errors (issue #115) ────────────────────────────────────
 // The contract surfaces failures as `GovernanceError` codes; a simulation
@@ -82,14 +88,14 @@ function mapGovernanceSimulationError(method: string, raw: unknown): Error {
 }
 
 export class QuorumClient {
-  private server: SorobanRpc.Server;
+  private server: rpc.Server;
   private governance: Contract;
   private token: Contract | null;
   private config: QuorumClientConfig;
 
   constructor(config: QuorumClientConfig) {
     this.config = config;
-    this.server = new SorobanRpc.Server(config.rpcUrl);
+    this.server = new rpc.Server(config.rpcUrl, { timeout: config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS });
     this.governance = new Contract(config.governanceContractId);
     // tokenContractId is required by the config type but older callers
     // (e.g. bench RPC mode) only pass a governance id — stay usable and fail
@@ -112,6 +118,25 @@ export class QuorumClient {
 
   async getProposalCount(): Promise<bigint> {
     return BigInt(await this.simulate<bigint | number>('get_proposal_count'));
+  }
+
+  async getLatestLedger(): Promise<number> {
+    return (await this.read('getLatestLedger', () => this.server.getLatestLedger())).sequence;
+  }
+
+  async getVotingPower(voter: string, snapshotLedger: number): Promise<bigint> {
+    const token = await this.tokenContract();
+    return BigInt(await this.simulateOn<bigint | number>(token, 'get_past_balance', new Address(voter).toScVal(), nativeToScVal(snapshotLedger, { type: 'u32' })));
+  }
+
+  async getBalance(voter: string): Promise<bigint> {
+    const token = await this.tokenContract();
+    return BigInt(await this.simulateOn<bigint | number>(token, 'balance', new Address(voter).toScVal()));
+  }
+
+  async getTokenDecimals(): Promise<number> {
+    const token = await this.tokenContract();
+    return this.simulateOn<number>(token, 'decimals');
   }
 
   async getConfig(): Promise<GovernanceConfig> {
@@ -305,11 +330,15 @@ export class QuorumClient {
    * account.
    */
   private async simulate<T>(method: string, ...args: xdr.ScVal[]): Promise<T> {
-    return this.simulateWith<T>(this.governance, method, ...args);
+    return this.simulateOn<T>(this.governance, method, ...args);
   }
 
   private async simulateToken<T>(method: string, ...args: xdr.ScVal[]): Promise<T> {
-    return this.simulateWith<T>(this.requireToken(), method, ...args);
+    return this.simulateOn<T>(this.requireToken(), method, ...args);
+  }
+
+  private async simulateOn<T>(contract: Contract, method: string, ...args: xdr.ScVal[]): Promise<T> {
+    return this.simulateWith<T>(contract, method, ...args);
   }
 
   private async simulateWith<T>(contract: Contract, method: string, ...args: xdr.ScVal[]): Promise<T> {
@@ -322,9 +351,9 @@ export class QuorumClient {
       .setTimeout(30)
       .build();
 
-    const simulation = await this.server.simulateTransaction(tx);
+    const simulation = await this.read(`simulate:${method}`, () => this.server.simulateTransaction(tx));
 
-    if (SorobanRpc.Api.isSimulationError(simulation)) {
+    if (rpc.Api.isSimulationError(simulation)) {
       throw new Error(`Simulation of ${method} failed: ${simulation.error}`);
     }
     if (!simulation.result) {
@@ -332,6 +361,62 @@ export class QuorumClient {
     }
 
     return scValToNative(simulation.result.retval) as T;
+  }
+
+  private async read<T>(operation: string, request: () => Promise<T>): Promise<T> {
+    const attempts = (this.config.readRetryAttempts ?? DEFAULT_READ_RETRY_ATTEMPTS) + 1;
+    let lastError: unknown;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return await this.withTimeout(operation, request());
+      } catch (error) {
+        lastError = isTimeoutError(error)
+          ? new RpcTimeoutError(operation, this.config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS)
+          : error;
+        if (lastError instanceof RpcTimeoutError || !isTransientRpcError(error) || attempt === attempts - 1) throw lastError;
+        const base = this.config.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+        const jitter = this.config.retryJitterMs ?? DEFAULT_RETRY_JITTER_MS;
+        await delay(base * 2 ** attempt + Math.floor(Math.random() * (jitter + 1)));
+      }
+    }
+    throw lastError;
+  }
+
+  private async withTimeout<T>(operation: string, promise: Promise<T>): Promise<T> {
+    const timeoutMs = this.config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new RpcTimeoutError(operation, timeoutMs)), timeoutMs);
+    });
+    try {
+      return await Promise.race([promise, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /** Submit already-signed XDR once, then poll until the network confirms it. */
+  async submitAndWait(signedXdr: string, options?: TransactionConfirmationOptions): Promise<rpc.Api.GetSuccessfulTransactionResponse> {
+    const transaction = TransactionBuilder.fromXDR(signedXdr, this.config.networkPassphrase);
+    const submitted = await this.withTimeout('sendTransaction', this.server.sendTransaction(transaction));
+    if (submitted.status === 'ERROR') {
+      const message = formatTransactionFailure(submitted);
+      throw new TransactionFailedError(submitted.hash, message, contractErrorCode(message));
+    }
+
+    const pollIntervalMs = options?.pollIntervalMs ?? this.config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    const timeoutMs = options?.timeoutMs ?? this.config.confirmationTimeoutMs ?? DEFAULT_CONFIRMATION_TIMEOUT_MS;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const result = await this.read('getTransaction', () => this.server.getTransaction(submitted.hash));
+      if (result.status === rpc.Api.GetTransactionStatus.SUCCESS) return result;
+      if (result.status === rpc.Api.GetTransactionStatus.FAILED) {
+        const message = formatTransactionFailure(result);
+        throw new TransactionFailedError(result.txHash, message, contractErrorCode(message));
+      }
+      await delay(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+    }
+    throw new RpcTimeoutError('transaction confirmation', timeoutMs);
   }
 
   /**
@@ -520,6 +605,29 @@ export class QuorumClient {
       nativeToScVal(amount, { type: 'i128' }),
     );
   }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+function isTransientRpcError(error: unknown): boolean {
+  const candidate = error as { response?: { status?: number }; status?: number; code?: string; message?: string };
+  const status = candidate.response?.status ?? candidate.status;
+  return (typeof status === 'number' && (status === 408 || status === 429 || status >= 500))
+    || candidate.code === 'ECONNRESET'
+    || candidate.code === 'ETIMEDOUT'
+    || /(?:timeout|temporar|network|fetch failed|rate limit|try again)/i.test(candidate.message ?? '');
+}
+
+function isTimeoutError(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string };
+  return candidate.code === 'ECONNABORTED' || candidate.code === 'ETIMEDOUT' || /timeout/i.test(candidate.message ?? '');
+}
+
+function formatTransactionFailure(response: { hash?: string; txHash?: string; errorResult?: unknown; resultXdr?: unknown }): string {
+  const detail = response.errorResult ?? response.resultXdr;
+  return detail ? `Transaction ${response.hash ?? response.txHash ?? ''} failed: ${String(detail)}` : `Transaction ${response.hash ?? response.txHash ?? ''} failed`;
 }
 
 // ─── Decoding ──────────────────────────────────────────────────────────────

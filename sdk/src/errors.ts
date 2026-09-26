@@ -33,6 +33,25 @@ export enum TokenError {
   InvalidExpiration = 7,
 }
 
+export class RpcTimeoutError extends Error {
+  constructor(operation: string, timeoutMs: number) {
+    super(`${operation} timed out after ${timeoutMs}ms`);
+    this.name = 'RpcTimeoutError';
+  }
+}
+
+export class TransactionFailedError extends Error {
+  readonly transactionHash: string;
+  readonly contractErrorCode?: number;
+
+  constructor(hash: string, message: string, contractErrorCode?: number) {
+    super(message);
+    this.name = 'TransactionFailedError';
+    this.transactionHash = hash;
+    this.contractErrorCode = contractErrorCode;
+  }
+}
+
 /**
  * Extracts `N` from an `Error(Contract, #N)` host error, whether given the
  * error object, its message, or a simulation error string.

@@ -1,11 +1,12 @@
-import { SorobanRpc, Transaction, Address, nativeToScVal, scValToNative, xdr } from '@stellar/stellar-sdk';
+import { rpc, Transaction, Address, nativeToScVal, scValToNative, xdr } from '@stellar/stellar-sdk';
+import { jest } from '@jest/globals';
 import { QuorumClient, TESTNET } from '../src/client';
 import type { QuorumClientConfig } from '../src/types';
 import { enumVariant, structVal } from './xdr';
 
 // Mocked RPC: every read goes through Server.simulateTransaction, so stubbing
 // it lets us inspect the encoded call and feed back a contract return value.
-const simulate = jest.spyOn(SorobanRpc.Server.prototype, 'simulateTransaction');
+const simulate = jest.spyOn(rpc.Server.prototype, 'simulateTransaction');
 
 const CONTRACT = 'CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526';
 const TOKEN = 'CABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMWJO7';
@@ -18,11 +19,11 @@ const client = new QuorumClient({
 } as QuorumClientConfig);
 
 function returns(retval: xdr.ScVal) {
-  simulate.mockResolvedValueOnce({ result: { retval } } as unknown as SorobanRpc.Api.SimulateTransactionResponse);
+  simulate.mockResolvedValueOnce({ result: { retval } } as unknown as rpc.Api.SimulateTransactionResponse);
 }
 
 function fails(error: string) {
-  simulate.mockResolvedValueOnce({ error } as unknown as SorobanRpc.Api.SimulateTransactionResponse);
+  simulate.mockResolvedValueOnce({ error } as unknown as rpc.Api.SimulateTransactionResponse);
 }
 
 /** Method name and ScVal arguments of the contract call last sent to the RPC. */
@@ -33,19 +34,21 @@ function lastCall(): { method: string; args: xdr.ScVal[] } {
 /** The contract call last sent to the RPC. */
 function lastCallInvoke(): xdr.InvokeContractArgs {
   const tx = simulate.mock.calls.at(-1)![0] as Transaction;
-  return (tx.operations[0] as { func: xdr.HostFunction }).func.invokeContract() as xdr.InvokeContractArgs;
+  const func = (tx.operations[0] as { func: xdr.HostFunction }).func;
+  if (func.type !== 'hostFunctionTypeInvokeContract') throw new Error('Expected contract invocation');
+  return func.invokeContract;
 }
 
 function invoke(args: xdr.InvokeContractArgs): { method: string; args: xdr.ScVal[] } {
-  return { method: args.functionName().toString(), args: args.args() };
+  return { method: args.functionName.toString(), args: args.args };
 }
 
 /** Contract the call last sent to the RPC was addressed to. */
 function callAddress(): string {
-  return Address.fromScAddress(lastCallInvoke().contractAddress()).toString();
+  return Address.fromScAddress(lastCallInvoke().contractAddress).toString();
 }
 
-const proposalVal = structVal({
+const proposalFields = {
   id: nativeToScVal(7n, { type: 'u64' }),
   proposer: new Address(VOTER).toScVal(),
   title: nativeToScVal('Raise quorum', { type: 'string' }),
@@ -60,7 +63,6 @@ const proposalVal = structVal({
   quorum_required: nativeToScVal(50n, { type: 'i128' }),
   status: enumVariant('Active'),
 };
-
 const proposalVal = structVal(proposalFields);
 
 afterEach(() => simulate.mockReset());
@@ -73,7 +75,7 @@ describe('argument encoding', () => {
     const { method, args } = lastCall();
     expect(method).toBe('get_proposal');
     expect(args).toHaveLength(1);
-    expect(args[0].switch()).toBe(xdr.ScValType.scvU64());
+    expect(args[0].type).toBe('scvU64');
     expect(scValToNative(args[0])).toBe(7n);
   });
 
@@ -89,7 +91,7 @@ describe('argument encoding', () => {
 
     const { method, args } = lastCall();
     expect(method).toBe('get_vote');
-    expect(args.map(a => a.switch())).toEqual([xdr.ScValType.scvU64(), xdr.ScValType.scvAddress()]);
+    expect(args.map(a => a.type)).toEqual(['scvU64', 'scvAddress']);
     expect(Address.fromScVal(args[1]).toString()).toBe(VOTER);
   });
 });
@@ -160,8 +162,8 @@ describe('result decoding', () => {
 });
 
 it('getLatestLedger returns the RPC sequence', async () => {
-  jest.spyOn(SorobanRpc.Server.prototype, 'getLatestLedger')
-    .mockResolvedValueOnce({ sequence: 1234 } as SorobanRpc.Api.GetLatestLedgerResponse);
+  jest.spyOn(rpc.Server.prototype, 'getLatestLedger')
+    .mockResolvedValueOnce({ sequence: 1234 } as rpc.Api.GetLatestLedgerResponse);
   expect(await client.getLatestLedger()).toBe(1234);
 });
 
@@ -175,7 +177,7 @@ describe('voting power', () => {
 
     const { method, args } = lastCall();
     expect(method).toBe('get_past_balance');
-    expect(args.map(a => a.switch())).toEqual([xdr.ScValType.scvAddress(), xdr.ScValType.scvU32()]);
+    expect(args.map(a => a.type)).toEqual(['scvAddress', 'scvU32']);
     expect(Address.fromScVal(args[0]).toString()).toBe(VOTER);
     expect(scValToNative(args[1])).toBe(999);
   });
@@ -221,7 +223,7 @@ describe('voting power', () => {
 
     const balance = lastCall();
     expect(balance.method).toBe('balance');
-    expect(balance.args.map(a => a.switch())).toEqual([xdr.ScValType.scvAddress()]);
+    expect(balance.args.map(a => a.type)).toEqual(['scvAddress']);
     expect(Address.fromScVal(balance.args[0]).toString()).toBe(VOTER);
 
     returns(nativeToScVal(7, { type: 'u32' }));

@@ -161,9 +161,8 @@ export class EventDecodeError extends Error {
 function topicName(topic: readonly unknown[] | undefined): string | null {
   const head = topic?.[0];
   if (typeof head === 'string') return head;
-  if (!(head instanceof xdr.ScVal)) return null;
-  const type = head.switch();
-  if (type !== xdr.ScValType.scvSymbol() && type !== xdr.ScValType.scvString()) return null;
+  if (!xdr.ScVal.is(head)) return null;
+  if (head.type !== 'scvSymbol' && head.type !== 'scvString') return null;
   const name = scValToNative(head);
   return typeof name === 'string' ? name : null;
 }
