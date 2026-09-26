@@ -1,3 +1,20 @@
-export { QuorumClient, TESTNET, MAINNET } from './client';
-export { GovernanceError, TokenError, contractErrorCode, parseGovernanceError, parseTokenError } from './errors';
-export type { Proposal, ProposalStatus, GovernanceConfig, QuorumClientConfig, VoteSupport } from './types';
+export { QuorumClient, TESTNET, MAINNET } from './client.js';
+export { GovernanceError, TokenError, contractErrorCode, parseGovernanceError, parseTokenError } from './errors.js';
+export { EVENT_TOPICS, EventDecodeError, decodeEvent, decodeEvents } from './events.js';
+export type {
+  AdminTransferredEvent,
+  ApproveEvent,
+  BurnEvent,
+  MintEvent,
+  ProposalCancelledEvent,
+  ProposalCreatedEvent,
+  ProposalExecutedEvent,
+  ProposalFinalizedEvent,
+  ProposalQueuedEvent,
+  QuorumEvent,
+  QuorumEventType,
+  RawContractEvent,
+  TransferEvent,
+  VoteCastEvent,
+} from './events.js';
+export type { Proposal, ProposalStatus, GovernanceConfig, QuorumClientConfig, VoteSupport } from './types.js';
