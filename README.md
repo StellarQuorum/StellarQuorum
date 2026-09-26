@@ -207,14 +207,15 @@ full versioning policy and the release checklist.
 
 ## Frontend data source
 
-The frontend reads proposals from the governance contract through `QuorumClient`. Configure it with environment variables (e.g. in `frontend/.env.local`):
+The frontend reads proposals from the governance contract through `QuorumClient`. Configure it with environment variables (e.g. in `frontend/.env.local`; `frontend/.env.example` documents every one of them):
 
 | Variable | Default | |
 |---|---|---|
-| `NEXT_PUBLIC_GOVERNANCE_CONTRACT_ID` | — | Governance contract to read. |
+| `NEXT_PUBLIC_GOVERNANCE_CONTRACT_ID` | — | Governance contract to read. Must be a valid contract ID. |
 | `NEXT_PUBLIC_STELLAR_RPC_URL` | testnet RPC | Soroban RPC endpoint. |
 | `NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE` | testnet | Network passphrase. |
 | `NEXT_PUBLIC_TOKEN_CONTRACT_ID` | governance config | Token contract to read balances from. Optional: the client falls back to the token address in `get_config()`. |
-| `NEXT_PUBLIC_USE_FIXTURE` | — | Set to `1` to serve the bundled mock proposals instead. |
+| `NEXT_PUBLIC_USE_FIXTURE` | — | `1` to serve the bundled mock proposals instead; `0` to require a contract ID and fail fast without one. |
+| `NEXT_PUBLIC_SITE_URL` | `https://quorum.stellar.org` | Absolute origin of the deployment, used by `robots.txt` and the sitemap. |
 
-The mock fixture in `frontend/lib/proposals.ts` is also used whenever no contract ID is set, so `npm run dev` works offline without a deployment. Voting power uses a matching fixture in `frontend/lib/voting-power.ts`, keyed by address suffix — an address ending `3XZK` holds 2,500 QUORUM at the snapshot and 4,000 now, one ending `7MKL` holds 150,000 at both, and any other address held nothing at the snapshot. The frontend depends on the local SDK, so build it first: `npm run build:sdk`.
+The environment is validated once at startup by `frontend/lib/env.ts`: contract IDs are checked as strkeys (version byte and CRC-16 included, so a transposed character is caught), URLs are checked as absolute, and every problem is reported at once with the variable that needs fixing. With no contract ID set the frontend falls back to the mock fixture in `frontend/lib/proposals.ts`, so `npm run dev` works offline without a deployment; set `NEXT_PUBLIC_USE_FIXTURE=0` in a deployment to turn that fallback into a startup failure. Voting power uses a matching fixture in `frontend/lib/voting-power.ts`, keyed by address suffix — an address ending `3XZK` holds 2,500 QUORUM at the snapshot and 4,000 now, one ending `7MKL` holds 150,000 at both, and any other address held nothing at the snapshot. The frontend depends on the local SDK, so build it first: `npm run build:sdk`.

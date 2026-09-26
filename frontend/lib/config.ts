@@ -1,14 +1,18 @@
 import type { QuorumClient } from "@quorum/sdk";
+import { getEnv } from "./env";
+
+// Issue #143: the environment is validated once, here, at module scope — so a
+// missing or malformed contract ID or RPC URL fails on the first import with a
+// message naming the variable, instead of as a decoding error from inside the
+// SDK on the first read.
+const env = getEnv();
 
 /**
- * Runtime configuration derived from the environment.
- *
  * Fixture mode — bundled mock data instead of a contract — is decided here so
  * the server data layer and the client components can never disagree about
  * which source they are reading. See "Frontend data source" in the README.
  */
-export const USE_FIXTURE =
-  process.env.NEXT_PUBLIC_USE_FIXTURE === "1" || !process.env.NEXT_PUBLIC_GOVERNANCE_CONTRACT_ID;
+export const USE_FIXTURE = env.useFixture;
 
 /**
  * Decimals used to render raw token units as amounts.
@@ -24,9 +28,10 @@ export async function createQuorumClient(): Promise<QuorumClient> {
   // Imported lazily so fixture mode (and its tests) never load the Stellar SDK.
   const { QuorumClient, TESTNET } = await import("@quorum/sdk");
   return new QuorumClient({
-    rpcUrl: process.env.NEXT_PUBLIC_STELLAR_RPC_URL ?? TESTNET.rpcUrl!,
-    networkPassphrase: process.env.NEXT_PUBLIC_STELLAR_NETWORK_PASSPHRASE ?? TESTNET.networkPassphrase!,
-    governanceContractId: process.env.NEXT_PUBLIC_GOVERNANCE_CONTRACT_ID!,
-    tokenContractId: process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ID ?? "",
+    rpcUrl: env.stellarRpcUrl || TESTNET.rpcUrl!,
+    networkPassphrase: env.networkPassphrase || TESTNET.networkPassphrase!,
+    // Validated in loadEnv, so this is a contract ID or nothing.
+    governanceContractId: env.governanceContractId!,
+    tokenContractId: env.tokenContractId ?? "",
   });
 }
