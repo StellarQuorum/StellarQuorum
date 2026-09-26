@@ -1,0 +1,99 @@
+name: Contract specs
+
+# Publishes the interface spec (functions, types, errors, events) of both
+# contracts as JSON, so the SDK and other protocols can read it without
+# building the wasm locally.
+#
+# Every run uploads the specs as a workflow artifact. When a GitHub release is
+# published, the same files are attached to that release.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+      - '.github/workflows/contract-specs.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'contracts/**'
+      - '.github/workflows/contract-specs.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-specs-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned so the JSON shape cannot change under a release without a reviewed
+  # bump here. The checksum is of the release tarball.
+  STELLAR_CLI_VERSION: 25.2.0
+  STELLAR_CLI_SHA256: da809a7b6ec3e66a5dd6ebdf199cdd638007bd5c063bfd6d18ae63a18b1b86b6
+
+jobs:
+  specs:
+    name: Generate contract spec JSON
+    runs-on: ubuntu-latest
+    permissions:
+      # Only used to attach the specs to a release; read-only otherwise.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Cache cargo registry and build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+          key: cargo-${{ hashFiles('contracts/Cargo.lock') }}
+          cache-on-failure: true
+      - name: Install Stellar CLI
+        run: |
+          archive="stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/${archive}"
+          echo "${STELLAR_CLI_SHA256}  ${archive}" | sha256sum --check
+          tar -xzf "$archive" stellar
+          sudo install -m 0755 stellar /usr/local/bin/stellar
+          stellar --version
+      - name: Build contracts
+        run: cd contracts && cargo build --target wasm32-unknown-unknown --release
+      - name: Generate spec JSON
+        run: |
+          mkdir -p specs
+          wasm_dir=contracts/target/wasm32-unknown-unknown/release
+          for name in token governance; do
+            stellar contract info interface \
+              --wasm "$wasm_dir/quorum_${name}.wasm" \
+              --output json-formatted > "specs/quorum-${name}.spec.json"
+          done
+      # An empty or truncated spec would otherwise be published silently.
+      - name: Validate specs
+        run: |
+          for spec in specs/*.spec.json; do
+            python3 - "$spec" <<'PY'
+          import json, sys
+          path = sys.argv[1]
+          entries = json.load(open(path))
+          if not isinstance(entries, list) or not any("function_v0" in e for e in entries):
+              sys.exit(f"{path}: no contract functions in spec")
+          print(f"{path}: {len(entries)} spec entries")
+          PY
+          done
+      - name: Upload specs
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-specs
+          path: specs/*.spec.json
+          if-no-files-found: error
+      - name: Attach specs to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" specs/*.spec.json --clobber

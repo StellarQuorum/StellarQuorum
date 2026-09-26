@@ -98,6 +98,12 @@ The token implements this with per-address checkpoints:
 - `get_past_balance(owner, ledger)` binary-searches for the last checkpoint at
   or before `ledger` and returns its balance, or `0` if the address held nothing
   that far back.
+- History is bounded by `CHECKPOINT_RETENTION` (60 days of ledgers, twice the
+  longest voting period the create form offers). On every write, entries older
+  than the window are pruned, except the newest of them, which is kept as the
+  balance in effect at the cutoff. A snapshot older than the window therefore
+  reads as `0`; raise the constant if governance is ever configured with a longer
+  `voting_period`. See [contracts/token/README.md](../contracts/token/README.md#checkpoint-growth).
 
 Delegation (`delegate()`) and `get_past_votes()` are not implemented; both
 contracts carry `TODO`s for them, and `DataKey::Delegate` in the governance
@@ -180,12 +186,21 @@ no voting activity.
 | Persistent | `Allowance(owner, spender)` | `AllowanceValue` |
 | Persistent | `Checkpoints(owner)` | `Vec<Checkpoint>` |
 
-The token contract does not currently extend TTLs of its own entries, so
-long-lived balances and checkpoints depend on being bumped externally (for
-example by the network or an operator).
+The token uses the same constants as governance (`TTL_THRESHOLD` 30 days,
+`TTL_EXTEND_TO` 90 days). This matters more for the token than it looks:
+snapshot voting power is read from `Checkpoints`, so an expired entry would make
+`get_past_balance` return `0` and silently strip a holder's vote.
+
+`Balance`, `Checkpoints` and `Allowance` entries are extended whenever they are
+written, and on reads that find them (`balance`, `get_past_balance`, `allowance`
+and the internal paths that use them). Expired allowances are not extended.
+Instance storage is extended on every balance write and on `total_supply` and
+`get_past_balance`.
 
 ## Errors
 
 Both contracts return typed errors (`#[contracterror]`) rather than panicking.
 `GovernanceError` codes 1-14 and `TokenError` codes 1-7 are defined in the
-respective `lib.rs`.
+respective `lib.rs`. `mint` returns `TokenError::Overflow` instead of trapping
+when it would overflow total supply, and `burn` returns it rather than taking
+total supply below zero.

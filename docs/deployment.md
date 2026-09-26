@@ -75,6 +75,26 @@ stellar contract invoke --id $TOKEN_ID --rpc-url $RPC_URL \
   --network-passphrase "$PASSPHRASE" -- balance --owner $SOURCE_ACCOUNT
 ```
 
+## Contract Specs
+
+The `Contract specs` workflow builds both contracts and generates their
+interface spec (functions, types, errors, events) as JSON:
+`quorum-token.spec.json` and `quorum-governance.spec.json`. Every run on a
+contracts change uploads them as the `contract-specs` workflow artifact, and
+publishing a GitHub release attaches them to that release.
+
+To generate one locally:
+
+```bash
+cd contracts && cargo build --target wasm32-unknown-unknown --release
+stellar contract info interface \
+  --wasm target/wasm32-unknown-unknown/release/quorum_token.wasm \
+  --output json-formatted > quorum-token.spec.json
+```
+
+The Stellar CLI version used in CI is pinned in the workflow, so the JSON shape
+only changes when that pin is bumped in a reviewed change.
+
 ## Environment Variables
 
 Add these to your `.env.local` for the frontend:
