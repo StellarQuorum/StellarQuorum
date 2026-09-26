@@ -53,7 +53,7 @@ function structVal(fields: Record<string, xdr.ScVal>): xdr.ScVal {
   );
 }
 
-const proposalVal = structVal({
+const proposalFields: Record<string, xdr.ScVal> = {
   id: nativeToScVal(7n, { type: 'u64' }),
   proposer: new Address(VOTER).toScVal(),
   title: nativeToScVal('Raise quorum', { type: 'string' }),
@@ -67,7 +67,9 @@ const proposalVal = structVal({
   queue_ledger: nativeToScVal(0, { type: 'u32' }),
   quorum_required: nativeToScVal(50n, { type: 'i128' }),
   status: enumVariant('Active'),
-});
+};
+
+const proposalVal = structVal(proposalFields);
 
 afterEach(() => simulate.mockReset());
 
@@ -126,6 +128,11 @@ describe('result decoding', () => {
 
     fails('HostError: Error(Contract, #2)');
     await expect(client.getProposal(1n)).rejects.toThrow('Error(Contract, #2)');
+  });
+
+  it('rejects a ProposalStatus variant the SDK does not know', async () => {
+    returns(structVal({ ...proposalFields, status: enumVariant('Vetoed') }));
+    await expect(client.getProposal(7n)).rejects.toThrow('Unknown ProposalStatus variant: Vetoed');
   });
 
   it('decodes get_proposal_count as bigint', async () => {
