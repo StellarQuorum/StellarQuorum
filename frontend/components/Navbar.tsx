@@ -1,5 +1,6 @@
 'use client';
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Scale } from "lucide-react";
 import { useWallet } from "./WalletProvider";
 
@@ -10,6 +11,7 @@ function shorten(address: string): string {
 
 export default function Navbar() {
   const { address, pending, error, connect, disconnect } = useWallet();
+  const pathname = usePathname();
 
   return (
     <nav className="border-b border-[#1a2535] bg-[#080c10]/90 backdrop-blur sticky top-0 z-50">
@@ -19,8 +21,20 @@ export default function Navbar() {
           Quorum
         </Link>
         <div className="flex items-center gap-6 text-sm text-slate-400">
-          <Link href="/proposals" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">Proposals</Link>
-          <Link href="/create" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">Create</Link>
+          <Link 
+            href="/proposals" 
+            className={`hover:text-slate-200 hover:underline underline-offset-4 transition-colors ${pathname?.startsWith('/proposals') ? 'text-slate-200 underline' : ''}`}
+            aria-current={pathname?.startsWith('/proposals') ? 'page' : undefined}
+          >
+            Proposals
+          </Link>
+          <Link 
+            href="/create" 
+            className={`hover:text-slate-200 hover:underline underline-offset-4 transition-colors ${pathname === '/create' ? 'text-slate-200 underline' : ''}`}
+            aria-current={pathname === '/create' ? 'page' : undefined}
+          >
+            Create
+          </Link>
           {address ? (
             <button
               onClick={disconnect}
