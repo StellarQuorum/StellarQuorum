@@ -16,15 +16,36 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
           components: clippy
+      - name: Start job timer
+        run: echo "CONTRACTS_JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+      # Issue #180: registry and build artifacts cached, keyed on Cargo.lock.
+      #
+      # This replaces a plain actions/cache over ~/.cargo/registry, ~/.cargo/git
+      # and contracts/target with the single key
+      # `cargo-${{ hashFiles('contracts/Cargo.lock') }}`. That key only moved when
+      # the lockfile moved, so bumping the toolchain restored artifacts built by
+      # the *previous* rustc: every crate rebuilt from cold, and because the key
+      # still hit, the post-job step never saved a fresh entry. The job stayed
+      # wedged on cold builds until someone happened to edit Cargo.lock.
+      #
+      # Swatinem/rust-cache also keys on the rustc version and workspace metadata,
+      # so a toolchain change misses cleanly and re-saves, and it prunes stale
+      # fingerprints instead of letting contracts/target — which additionally holds
+      # cargo-llvm-cov's target/llvm-cov-target — grow past the repository's 10 GB
+      # cache budget, where GitHub starts evicting entries LRU and the cache
+      # quietly stops helping.
       - name: Cache cargo registry and build
-        uses: actions/cache@v4
+        id: cargo-cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            contracts/target
+          # The cargo workspace lives in contracts/, so that is what gets keyed
+          # and pruned. The registry (~/.cargo/registry, ~/.cargo/git) and build
+          # artifacts (contracts/target) are both cached by default.
+          workspaces: contracts
+          # Keep the lockfile in the key so a dependency change invalidates it.
           key: cargo-${{ hashFiles('contracts/Cargo.lock') }}
-          restore-keys: cargo-
+          # A missing or unavailable cache backend must never block a PR.
+          cache-on-failure: true
       - name: Build contracts
         run: cd contracts && cargo build --target wasm32-unknown-unknown --release
       - name: Clippy
@@ -63,6 +84,23 @@ jobs:
       # visible in a normal code review instead of buried in workflow YAML.
       - name: cargo audit
         run: cd contracts && cargo audit --config audit.toml
+      # Issue #180: makes "measurable reduction in job duration" checkable from the
+      # run itself rather than by eyeballing two runs side by side. If the cache
+      # ever regresses to a miss, the summary says so on the run that shows it.
+      - name: Report cache status and job duration
+        if: always()
+        run: |
+          started=${CONTRACTS_JOB_START:-$(date +%s)}
+          duration=$(( $(date +%s) - started ))
+          {
+            echo "### Contracts job"
+            echo ""
+            echo "| Metric | Value |"
+            echo "| --- | --- |"
+            echo "| cargo cache hit | \`${{ steps.cargo-cache.outputs.cache-hit }}\` |"
+            echo "| contracts/Cargo.lock | \`${{ hashFiles('contracts/Cargo.lock') }}\` |"
+            echo "| Job duration | ${duration}s |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   frontend:
     name: Build Frontend
