@@ -1,6 +1,7 @@
 import { SorobanRpc, Transaction, Address, nativeToScVal, scValToNative, xdr } from '@stellar/stellar-sdk';
 import { QuorumClient, TESTNET } from '../src/client';
 import type { QuorumClientConfig } from '../src/types';
+import { enumVariant, structVal } from './xdr';
 
 // Mocked RPC: every read goes through Server.simulateTransaction, so stubbing
 // it lets us inspect the encoded call and feed back a contract return value.
@@ -29,15 +30,6 @@ function lastCall(): { method: string; args: xdr.ScVal[] } {
   const op = tx.operations[0] as { func: xdr.HostFunction };
   const invoke = op.func.invokeContract();
   return { method: invoke.functionName().toString(), args: invoke.args() };
-}
-
-const enumVariant = (name: string) => xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(name)]);
-
-function structVal(fields: Record<string, xdr.ScVal>): xdr.ScVal {
-  // Soroban requires struct maps sorted by key.
-  return xdr.ScVal.scvMap(
-    Object.keys(fields).sort().map(key => new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(key), val: fields[key] })),
-  );
 }
 
 const proposalVal = structVal({
