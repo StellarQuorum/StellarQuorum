@@ -6,7 +6,117 @@ exports[`Footer matches the visual baseline 1`] = `
     "class": "border-t border-[#1a2535] py-8 text-center text-sm text-slate-600",
   },
   "children": [
-    "Quorum · Built for the Stellar Ecosystem · Drips Wave Contributor · MIT License",
+    {
+      "attrs": {
+        "aria-label": "Site resources",
+        "class": "max-w-6xl mx-auto px-6",
+      },
+      "children": [
+        {
+          "attrs": {
+            "class": "flex flex-wrap items-center justify-center gap-x-6 gap-y-2",
+          },
+          "children": [
+            {
+              "attrs": {},
+              "children": [
+                {
+                  "attrs": {
+                    "class": "text-slate-400 hover:text-slate-200 hover:underline underline-offset-4 transition-colors",
+                    "href": "https://github.com/StellarQuorum/StellarQuorum/tree/main/docs",
+                    "title": "Architecture, deployment and governance documentation",
+                  },
+                  "children": [
+                    "Docs",
+                  ],
+                  "tag": "a",
+                },
+              ],
+              "tag": "li",
+            },
+            {
+              "attrs": {},
+              "children": [
+                {
+                  "attrs": {
+                    "class": "text-slate-400 hover:text-slate-200 hover:underline underline-offset-4 transition-colors",
+                    "href": "https://github.com/StellarQuorum/StellarQuorum",
+                    "title": "The StellarQuorum repository on GitHub",
+                  },
+                  "children": [
+                    "Source",
+                  ],
+                  "tag": "a",
+                },
+              ],
+              "tag": "li",
+            },
+            {
+              "attrs": {},
+              "children": [
+                {
+                  "attrs": {
+                    "class": "text-slate-400 hover:text-slate-200 hover:underline underline-offset-4 transition-colors",
+                    "href": "https://github.com/StellarQuorum/StellarQuorum/discussions",
+                    "title": "Ask questions and share ideas",
+                  },
+                  "children": [
+                    "Discussions",
+                  ],
+                  "tag": "a",
+                },
+              ],
+              "tag": "li",
+            },
+            {
+              "attrs": {},
+              "children": [
+                {
+                  "attrs": {
+                    "class": "text-slate-400 hover:text-slate-200 hover:underline underline-offset-4 transition-colors",
+                    "href": "https://github.com/StellarQuorum/StellarQuorum/issues",
+                    "title": "Report a bug or pick up an issue",
+                  },
+                  "children": [
+                    "Issues",
+                  ],
+                  "tag": "a",
+                },
+              ],
+              "tag": "li",
+            },
+            {
+              "attrs": {},
+              "children": [
+                {
+                  "attrs": {
+                    "class": "text-slate-400 hover:text-slate-200 hover:underline underline-offset-4 transition-colors",
+                    "href": "https://github.com/StellarQuorum/StellarQuorum/blob/main/CONTRIBUTING.md",
+                    "title": "How to contribute to Quorum",
+                  },
+                  "children": [
+                    "Contributing",
+                  ],
+                  "tag": "a",
+                },
+              ],
+              "tag": "li",
+            },
+          ],
+          "tag": "ul",
+        },
+      ],
+      "tag": "nav",
+    },
+    {
+      "attrs": {
+        "class": "mt-4",
+      },
+      "children": [
+        "Quorum · Built for the Stellar Ecosystem · Drips Wave Contributor · MIT License",
+      ],
+      "tag": "p",
+    },
   ],
   "tag": "footer",
 }
