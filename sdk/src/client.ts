@@ -1,6 +1,6 @@
 import { SorobanRpc, Contract, TransactionBuilder, BASE_FEE, nativeToScVal, scValToNative, Address, Account, xdr } from '@stellar/stellar-sdk';
-import type { Proposal, GovernanceConfig, QuorumClientConfig, VoteSupport } from './types';
-import { GovernanceError, parseGovernanceError } from './errors';
+import type { Proposal, GovernanceConfig, QuorumClientConfig, VoteSupport } from './types.js';
+import { GovernanceError, parseGovernanceError } from './errors.js';
 
 /**
  * Source account used for read-only simulation.
