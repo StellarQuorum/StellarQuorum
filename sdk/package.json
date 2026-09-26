@@ -2,19 +2,81 @@
   "name": "@quorum/sdk",
   "version": "0.1.0",
   "description": "TypeScript SDK for interacting with Quorum governance contracts on Stellar",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StellarQuorum/StellarQuorum.git",
+    "directory": "sdk"
+  },
+  "keywords": [
+    "stellar",
+    "soroban",
+    "governance",
+    "quorum",
+    "dao",
+    "sdk"
+  ],
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/cjs/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./freighter": {
+      "import": {
+        "types": "./dist/esm/freighter.d.ts",
+        "default": "./dist/esm/freighter.js"
+      },
+      "require": {
+        "types": "./dist/cjs/freighter.d.ts",
+        "default": "./dist/cjs/freighter.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.cjs.json && tsc -p tsconfig.esm.json && node scripts/finalize-dist.mjs",
     "test": "jest",
+    "test:smoke": "node scripts/smoke.mjs",
+    "verify": "npm run lint && npm run build && npm test -- --ci && npm run test:smoke",
+    "check:publish": "node scripts/check-published.mjs",
+    "prepublishOnly": "npm run build && npm run test:smoke",
     "lint": "eslint src test",
     "bench": "node bench/proposal-list.bench.mjs"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^12.0.0"
   },
+  "peerDependencies": {
+    "@stellar/freighter-api": "^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@stellar/freighter-api": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@stellar/freighter-api": "~6.0.1",
     "@types/jest": "^29.5.14",
     "@types/node": "^20.0.0",
     "eslint": "^9.39.5",
