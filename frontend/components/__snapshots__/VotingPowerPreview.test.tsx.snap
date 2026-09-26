@@ -1,0 +1,220 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`VotingPowerPreview explains a zero weight instead of only displaying it 1`] = `
+{
+  "attrs": {
+    "class": "rounded-lg border border-[#1a2535] bg-[#080c10] p-4 mb-4",
+  },
+  "children": [
+    {
+      "attrs": {
+        "class": "flex gap-2.5",
+      },
+      "children": [
+        {
+          "attrs": {},
+          "children": [],
+          "tag": "svg",
+        },
+        {
+          "attrs": {},
+          "children": [
+            {
+              "attrs": {
+                "class": "text-sm font-semibold text-white",
+              },
+              "children": [
+                "No voting power on this proposal",
+              ],
+              "tag": "p",
+            },
+            {
+              "attrs": {
+                "class": "text-xs text-slate-400 mt-1 leading-relaxed",
+              },
+              "children": [
+                "Your QUORUM balance at snapshot ledger",
+                {
+                  "attrs": {
+                    "class": "font-mono text-slate-300",
+                  },
+                  "children": [
+                    "#61,284,512",
+                  ],
+                  "tag": "span",
+                },
+                "— the ledger recorded when this proposal was created — was 0, so the contract rejects a vote from this address with",
+                {
+                  "attrs": {
+                    "class": "font-mono text-slate-300",
+                  },
+                  "children": [
+                    "NoVotingPower",
+                  ],
+                  "tag": "code",
+                },
+                ".",
+              ],
+              "tag": "p",
+            },
+          ],
+          "tag": "div",
+        },
+      ],
+      "tag": "div",
+    },
+  ],
+  "tag": "div",
+}
+`;
+
+exports[`VotingPowerPreview matches the visual baseline when the snapshot balance is the current balance 1`] = `
+{
+  "attrs": {
+    "class": "rounded-lg border border-[#1a2535] bg-[#080c10] p-4 mb-4",
+  },
+  "children": [
+    {
+      "attrs": {},
+      "children": [
+        {
+          "attrs": {
+            "class": "text-xs text-slate-500",
+          },
+          "children": [
+            "You will vote with",
+          ],
+          "tag": "p",
+        },
+        {
+          "attrs": {
+            "class": "text-lg font-bold text-white font-mono mt-0.5",
+          },
+          "children": [
+            "2,500",
+            {
+              "attrs": {
+                "class": "text-slate-500 text-sm font-sans",
+              },
+              "children": [
+                "QUORUM",
+              ],
+              "tag": "span",
+            },
+          ],
+          "tag": "p",
+        },
+        {
+          "attrs": {
+            "class": "text-xs text-slate-400 mt-1 leading-relaxed",
+          },
+          "children": [
+            "Voting power is your QUORUM balance at snapshot ledger",
+            {
+              "attrs": {
+                "class": "font-mono text-slate-300",
+              },
+              "children": [
+                "#61,284,512",
+              ],
+              "tag": "span",
+            },
+            ", not your current balance.",
+          ],
+          "tag": "p",
+        },
+      ],
+      "tag": "div",
+    },
+  ],
+  "tag": "div",
+}
+`;
+
+exports[`VotingPowerPreview matches the visual baseline when the wallet holds more than the ballot counts 1`] = `
+{
+  "attrs": {
+    "class": "rounded-lg border border-[#1a2535] bg-[#080c10] p-4 mb-4",
+  },
+  "children": [
+    {
+      "attrs": {},
+      "children": [
+        {
+          "attrs": {
+            "class": "text-xs text-slate-500",
+          },
+          "children": [
+            "You will vote with",
+          ],
+          "tag": "p",
+        },
+        {
+          "attrs": {
+            "class": "text-lg font-bold text-white font-mono mt-0.5",
+          },
+          "children": [
+            "2,500",
+            {
+              "attrs": {
+                "class": "text-slate-500 text-sm font-sans",
+              },
+              "children": [
+                "QUORUM",
+              ],
+              "tag": "span",
+            },
+          ],
+          "tag": "p",
+        },
+        {
+          "attrs": {
+            "class": "text-xs text-slate-400 mt-1 leading-relaxed",
+          },
+          "children": [
+            "Voting power is your QUORUM balance at snapshot ledger",
+            {
+              "attrs": {
+                "class": "font-mono text-slate-300",
+              },
+              "children": [
+                "#61,284,512",
+              ],
+              "tag": "span",
+            },
+            ", not your current balance. This wallet holds 4,000 QUORUM now — the difference is not counted on this proposal.",
+          ],
+          "tag": "p",
+        },
+      ],
+      "tag": "div",
+    },
+  ],
+  "tag": "div",
+}
+`;
+
+exports[`VotingPowerPreview prompts for a wallet when none is connected, and reads nothing 1`] = `
+{
+  "attrs": {
+    "class": "rounded-lg border border-[#1a2535] bg-[#080c10] p-4 mb-4",
+  },
+  "children": [
+    {
+      "attrs": {
+        "class": "flex items-center gap-2 text-sm text-slate-400",
+      },
+      "children": [
+        {
+          "attrs": {},
+          "children": [],
+          "tag": "svg",
+        },
+        "Connect your wallet to see the weight this proposal will count.",
+      ],
+      "tag": "p",
+    },
+  ],
+  "tag": "div",
+}
+`;

@@ -80,6 +80,50 @@ export class QuorumClient {
     return (await this.server.getLatestLedger()).sequence;
   }
 
+  // ─── Voting power ─────────────────────────────────────────────────────────
+
+  /**
+   * The weight `voter` will cast on a proposal snapshotted at `snapshotLedger`.
+   *
+   * `vote()` reads power at the snapshot rather than at vote time, so this is
+   * exactly the number the contract will record. Reading it before signing is
+   * the only way a voter learns that tokens bought after the proposal opened
+   * carry no weight.
+   *
+   * @param voter Stellar address of the voter.
+   * @param snapshotLedger The proposal's `snapshot_ledger`.
+   * @returns Token balance at that ledger, zero if the address held none.
+   */
+  async getVotingPower(voter: string, snapshotLedger: number): Promise<bigint> {
+    const token = await this.tokenContract();
+    return BigInt(
+      await this.simulateOn<bigint | number>(
+        token,
+        'get_past_balance',
+        new Address(voter).toScVal(),
+        nativeToScVal(snapshotLedger, { type: 'u32' }),
+      ),
+    );
+  }
+
+  /**
+   * A voter's live token balance.
+   *
+   * Never used to weight a vote, but the difference against
+   * {@link getVotingPower} is what makes a stale snapshot legible: a wallet can
+   * show a balance that the ballot will not count.
+   */
+  async getBalance(voter: string): Promise<bigint> {
+    const token = await this.tokenContract();
+    return BigInt(await this.simulateOn<bigint | number>(token, 'balance', new Address(voter).toScVal()));
+  }
+
+  /** Decimals of the governance token, for rendering raw balances as amounts. */
+  async getTokenDecimals(): Promise<number> {
+    const token = await this.tokenContract();
+    return await this.simulateOn<number>(token, 'decimals');
+  }
+
   async getProposalsByStatus(status: Proposal['status']): Promise<Proposal[]> {
     const all = await this.getAllProposals();
     return all.filter(p => p.status === status);
@@ -96,6 +140,21 @@ export class QuorumClient {
   // ─── Internals ───────────────────────────────────────────────────────────
 
   /**
+   * The token contract, resolved on first use.
+   *
+   * `tokenContractId` is the deployment-time hint. When it is absent the
+   * governance config is the authority, so a caller that only knows the
+   * governance contract still gets correct balances.
+   */
+  private async tokenContract(): Promise<Contract> {
+    if (this.config.tokenContractId) {
+      return new Contract(this.config.tokenContractId);
+    }
+    const { token } = await this.getConfig();
+    return new Contract(token);
+  }
+
+  /**
    * Calls a read-only contract method through `simulateTransaction` and decodes
    * the return value.
    *
@@ -103,12 +162,17 @@ export class QuorumClient {
    * account.
    */
   private async simulate<T>(method: string, ...args: xdr.ScVal[]): Promise<T> {
+    return this.simulateOn(this.governance, method, ...args);
+  }
+
+  /** {@link simulate}, against a contract other than the governance contract. */
+  private async simulateOn<T>(contract: Contract, method: string, ...args: xdr.ScVal[]): Promise<T> {
     const source = new Account(READ_ONLY_SOURCE, '0');
     const tx = new TransactionBuilder(source, {
       fee: BASE_FEE,
       networkPassphrase: this.config.networkPassphrase,
     })
-      .addOperation(this.governance.call(method, ...args))
+      .addOperation(contract.call(method, ...args))
       .setTimeout(30)
       .build();
 
