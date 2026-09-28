@@ -88,6 +88,20 @@ const TTL_THRESHOLD: u32 = LEDGERS_PER_DAY * 30;
 /// Extend qualifying entries back out to 90 days.
 const TTL_EXTEND_TO: u32 = LEDGERS_PER_DAY * 90;
 
+/// Emitted when the contract is initialized.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractInitialized {
+    pub admin: Address,
+    pub guardian: Address,
+    pub token: Address,
+    pub quorum_bps: u32,
+    pub voting_period: u32,
+    pub timelock_period: u32,
+    pub execution_grace_period: u32,
+    pub proposal_threshold: i128,
+}
+
 /// Emitted when a proposal is opened.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -214,6 +228,8 @@ pub enum DataKey {
     HasVoted(u64, Address),
     Delegate(Address),
     PendingAdmin,
+    ProposerIndex(Address, u64), // (proposer, index) -> proposal_id
+    ProposerCount(Address),      // proposer -> count of proposals
 }
 
 #[contract]
@@ -244,9 +260,23 @@ impl GovernanceContract {
             return Err(GovernanceError::MinimumTimelockRequired);
         }
         admin.require_auth();
-        let config = Config { token, quorum_bps, voting_period, timelock_period, proposal_threshold, admin, guardian, execution_grace_period, paused: false };
+        let config = Config { token: token.clone(), quorum_bps, voting_period, timelock_period, proposal_threshold, admin: admin.clone(), guardian: guardian.clone(), execution_grace_period, paused: false };
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::ProposalCount, &0u64);
+        
+        env.events().publish(
+            (Symbol::new(&env, "contract_initialized"),),
+            ContractInitialized {
+                admin,
+                guardian,
+                token,
+                quorum_bps,
+                voting_period,
+                timelock_period,
+                execution_grace_period,
+                proposal_threshold,
+            },
+        );
         Ok(())
     }
 
@@ -257,7 +287,6 @@ impl GovernanceContract {
     pub fn create_proposal(env: Env, proposer: Address, title: String, description: String, metadata_uri: String) -> Result<u64, GovernanceError> {
         let config: Config = Self::require_config(&env)?;
         proposer.require_auth();
-        let config: Config = env.storage().instance().get(&DataKey::Config).unwrap();
         
         // Check if contract is paused
         if config.paused {
@@ -266,19 +295,6 @@ impl GovernanceContract {
         
         // Validate title: reject empty titles
         if title.len() == 0 {
-            return Err(GovernanceError::EmptyTitle);
-        }
-        
-        // Validate title: reject whitespace-only titles by checking if all bytes are whitespace
-        let mut has_non_whitespace = false;
-        for i in 0..title.len() {
-            let byte = title.get(i).unwrap();
-            if byte != b' ' && byte != b'\t' && byte != b'\n' && byte != b'\r' {
-                has_non_whitespace = true;
-                break;
-            }
-        }
-        if !has_non_whitespace {
             return Err(GovernanceError::EmptyTitle);
         }
         
@@ -317,7 +333,7 @@ impl GovernanceContract {
             .checked_add(config.voting_period)
             .ok_or(GovernanceError::Overflow)?;
         let proposal = Proposal {
-            id, proposer, title, description,
+            id, proposer: proposer.clone(), title, description,
             for_votes: 0, against_votes: 0, abstain_votes: 0,
             snapshot_ledger: current,
             start_ledger,
@@ -329,6 +345,15 @@ impl GovernanceContract {
         };
         env.storage().persistent().set(&DataKey::Proposal(id), &proposal);
         env.storage().instance().set(&DataKey::ProposalCount, &id);
+        
+        // Index proposal by proposer
+        let proposer_count: u64 = env.storage().persistent()
+            .get(&DataKey::ProposerCount(proposer.clone()))
+            .unwrap_or(0);
+        let new_count = proposer_count + 1;
+        env.storage().persistent().set(&DataKey::ProposerIndex(proposer.clone(), new_count), &id);
+        env.storage().persistent().set(&DataKey::ProposerCount(proposer.clone()), &new_count);
+        
         Self::touch_proposal(&env, id);
         Self::touch_instance(&env);
 
@@ -385,7 +410,6 @@ impl GovernanceContract {
     }
 
     pub fn finalize(env: Env, proposal_id: u64) -> Result<ProposalStatus, GovernanceError> {
-        let config: Config = Self::require_config(&env)?;
         let mut proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
         if env.ledger().sequence() <= proposal.end_ledger { return Err(GovernanceError::VotingNotActive); }
@@ -506,9 +530,72 @@ impl GovernanceContract {
     pub fn get_proposal_count(env: Env) -> u64 {
         env.storage().instance().get(&DataKey::ProposalCount).unwrap_or(0)
     }
+    
+    /// Returns a paginated list of proposals.
+    /// `start` is the first proposal ID to return (1-indexed).
+    /// `limit` is bounded to prevent resource exhaustion.
+    /// Returns an empty vector if start is beyond the last proposal.
+    pub fn get_proposals(env: Env, start: u64, limit: u32) -> Result<soroban_sdk::Vec<Proposal>, GovernanceError> {
+        const MAX_PAGE_SIZE: u32 = 100;
+        let bounded_limit = if limit > MAX_PAGE_SIZE { MAX_PAGE_SIZE } else { limit };
+        
+        let count = Self::get_proposal_count(env.clone());
+        let mut proposals = soroban_sdk::Vec::new(&env);
+        
+        if start < 1 || start > count {
+            return Ok(proposals); // Empty page for out-of-range start
+        }
+        
+        let end = start.saturating_add(u64::from(bounded_limit)).min(count + 1);
+        
+        for id in start..end {
+            if let Ok(proposal) = Self::get_proposal(env.clone(), id) {
+                proposals.push_back(proposal);
+            }
+        }
+        
+        Ok(proposals)
+    }
+    
+    /// Returns all proposals opened by a specific address.
+    /// Returns an empty vector if the address has never proposed.
+    pub fn get_proposals_by_proposer(env: Env, proposer: Address) -> soroban_sdk::Vec<Proposal> {
+        let mut proposals = soroban_sdk::Vec::new(&env);
+        let count: u64 = env.storage().persistent()
+            .get(&DataKey::ProposerCount(proposer.clone()))
+            .unwrap_or(0);
+        
+        for i in 1..=count {
+            if let Some(proposal_id) = env.storage().persistent()
+                .get::<DataKey, u64>(&DataKey::ProposerIndex(proposer.clone(), i)) {
+                if let Ok(proposal) = Self::get_proposal(env.clone(), proposal_id) {
+                    proposals.push_back(proposal);
+                }
+            }
+        }
+        
+        proposals
+    }
 
     pub fn has_voted(env: Env, proposal_id: u64, voter: Address) -> bool {
         env.storage().persistent().has(&DataKey::HasVoted(proposal_id, voter))
+    }
+    
+    /// Returns whether a proposal has reached quorum.
+    /// Uses the same comparison logic as finalize().
+    pub fn has_reached_quorum(env: Env, proposal_id: u64) -> Result<bool, GovernanceError> {
+        let proposal: Proposal = env.storage().persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .ok_or(GovernanceError::ProposalNotFound)?;
+        
+        // Same quorum check as finalize()
+        let total = proposal
+            .for_votes
+            .checked_add(proposal.against_votes)
+            .and_then(|sum| sum.checked_add(proposal.abstain_votes))
+            .ok_or(GovernanceError::Overflow)?;
+        
+        Ok(total >= proposal.quorum_required)
     }
 
     /// The choice `voter` recorded on `proposal_id` — 0 Against, 1 For,
