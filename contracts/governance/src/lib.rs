@@ -35,6 +35,13 @@ pub enum GovernanceError {
     NoVotingPower           = 14,
     ExecutionExpired        = 15,
     ContractPaused          = 16,
+    InvalidQuorumBps        = 17,
+    NotInitialized          = 18,
+    EmptyTitle              = 19,
+    TitleTooLong            = 20,
+    DescriptionTooLong      = 21,
+    MinimumQuorumRequired   = 22,
+    MinimumTimelockRequired = 23,
 }
 
 /// Basis-point denominator: `quorum_bps` of 500 means 5% of total supply.
@@ -45,6 +52,27 @@ const BPS_DENOMINATOR: i128 = 10_000;
 /// above it demands more votes than exist, so no proposal could ever reach
 /// quorum and there is no way to recover the parameter.
 const MAX_QUORUM_BPS: u32 = 10_000;
+
+/// Minimum quorum in basis points to prevent governance capture.
+/// A quorum of 0 means a single vote carries a proposal, which is dangerous
+/// for production use. This minimum of 1 basis point (0.01%) enforces that
+/// at least some meaningful participation is required.
+const MIN_QUORUM_BPS: u32 = 1;
+
+/// Minimum timelock period in ledgers to provide a safety window.
+/// A timelock of 0 allows same-ledger execution after finalization, removing
+/// the safety window against governance attacks described in the README as
+/// a 48-hour guard. This minimum of 1 ledger enforces at least one ledger
+/// delay between finalization and execution.
+const MIN_TIMELOCK_PERIOD: u32 = 1;
+
+/// Maximum length for proposal title in bytes.
+/// Prevents unbounded storage costs and ensures reasonable UI display.
+const MAX_TITLE_LENGTH: u32 = 200;
+
+/// Maximum length for proposal description in bytes.
+/// Prevents unbounded storage costs and rent inflation.
+const MAX_DESCRIPTION_LENGTH: u32 = 10_000;
 
 /// Ledgers in roughly one day, at Stellar's ~5 second close time.
 const LEDGERS_PER_DAY: u32 = 17_280;
@@ -203,6 +231,18 @@ impl GovernanceContract {
         if quorum_bps > MAX_QUORUM_BPS {
             return Err(GovernanceError::InvalidQuorumBps);
         }
+        // Enforce minimum quorum to prevent governance capture at quorum_bps = 0,
+        // where a single vote carries a proposal. This is useful in tests but
+        // dangerous in production.
+        if quorum_bps < MIN_QUORUM_BPS {
+            return Err(GovernanceError::MinimumQuorumRequired);
+        }
+        // Enforce minimum timelock to preserve the safety window described in
+        // the README. A timelock of 0 allows same-ledger execution, removing
+        // the 48-hour guard against governance attacks.
+        if timelock_period < MIN_TIMELOCK_PERIOD {
+            return Err(GovernanceError::MinimumTimelockRequired);
+        }
         admin.require_auth();
         let config = Config { token, quorum_bps, voting_period, timelock_period, proposal_threshold, admin, guardian, execution_grace_period, paused: false };
         env.storage().instance().set(&DataKey::Config, &config);
@@ -222,6 +262,34 @@ impl GovernanceContract {
         // Check if contract is paused
         if config.paused {
             return Err(GovernanceError::ContractPaused);
+        }
+        
+        // Validate title: reject empty titles
+        if title.len() == 0 {
+            return Err(GovernanceError::EmptyTitle);
+        }
+        
+        // Validate title: reject whitespace-only titles by checking if all bytes are whitespace
+        let mut has_non_whitespace = false;
+        for i in 0..title.len() {
+            let byte = title.get(i).unwrap();
+            if byte != b' ' && byte != b'\t' && byte != b'\n' && byte != b'\r' {
+                has_non_whitespace = true;
+                break;
+            }
+        }
+        if !has_non_whitespace {
+            return Err(GovernanceError::EmptyTitle);
+        }
+        
+        // Validate title length
+        if title.len() > MAX_TITLE_LENGTH {
+            return Err(GovernanceError::TitleTooLong);
+        }
+        
+        // Validate description length
+        if description.len() > MAX_DESCRIPTION_LENGTH {
+            return Err(GovernanceError::DescriptionTooLong);
         }
         
         let count: u64 = env.storage().instance().get(&DataKey::ProposalCount).unwrap_or(0);

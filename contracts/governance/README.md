@@ -70,6 +70,40 @@ the threshold is never rounded above what the supply supports. The value is
 frozen into the proposal, meaning later mints or burns cannot move the bar for
 a proposal that is already open.
 
+### Minimum Quorum Floor
+
+To prevent governance capture, the contract enforces a minimum `quorum_bps` of
+**1 basis point (0.01%)**. A `quorum_bps` of 0 would mean a single vote carries
+a proposal, which is dangerous for production use. While `quorum_bps = 0` is
+legitimately useful in tests, the production contract rejects it to prevent
+accidental misconfiguration.
+
+**Initialization behavior:**
+
+- `quorum_bps = 0` → rejected with `MinimumQuorumRequired`
+- `quorum_bps >= 1 and <= 10000` → accepted
+- `quorum_bps > 10000` → rejected with `InvalidQuorumBps`
+
+## Timelock Period
+
+The `timelock_period` parameter defines the delay (in ledgers) between a
+proposal passing and becoming executable. This safety window is described in
+the README as a 48-hour guard against governance attacks.
+
+### Minimum Timelock Requirement
+
+To preserve the safety window, the contract enforces a minimum `timelock_period`
+of **1 ledger**. A `timelock_period` of 0 would allow same-ledger execution
+after finalization, removing the safety guard entirely.
+
+**Initialization behavior:**
+
+- `timelock_period = 0` → rejected with `MinimumTimelockRequired`
+- `timelock_period >= 1` → accepted
+
+This minimum ensures there is always at least one ledger delay between
+finalization and execution, maintaining the intended security model.
+
 ## Which balance is read, and when
 
 Two different reads, deliberately:
@@ -82,6 +116,28 @@ Two different reads, deliberately:
 The snapshot read is backed by per-address balance checkpoints in the token
 contract (`get_past_balance`). A voter with no power at the snapshot is
 rejected with `NoVotingPower` rather than recording a zero-weight vote.
+
+## Proposal Title and Description Limits
+
+To prevent unbounded storage costs and ensure reasonable UI display, the
+contract enforces length limits on proposal titles and descriptions:
+
+| Field       | Maximum Length | Error if Exceeded    |
+| ----------- | -------------: | -------------------- |
+| Title       |      200 bytes | `TitleTooLong`       |
+| Description |   10,000 bytes | `DescriptionTooLong` |
+
+### Empty Title Validation
+
+The contract rejects proposals with empty or whitespace-only titles to prevent
+blank rows in UIs:
+
+- Empty string (`""`) → rejected with `EmptyTitle`
+- Whitespace-only (e.g., `"   "`) → rejected with `EmptyTitle`
+- Valid non-empty title → accepted
+
+These limits are documented here so frontend forms can validate input before
+submission, improving UX and preventing wasted transaction fees.
 
 ## Resource baseline
 
