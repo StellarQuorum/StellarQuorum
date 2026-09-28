@@ -1,21 +1,13 @@
-# Publishing `@quorum/sdk`
+# Release Process
 
-How the SDK gets from `sdk/package.json` to `npm install @quorum/sdk`, what has
-to be configured once, and the versioning rules that apply before 1.0.
+How to release StellarQuorum: contract WASM artifacts, SDK package, and frontend
+all ship together via a single version tag.
 
-## Name and scope status
+## One-time setup
 
-Checked against the public registry on 2026-09-26:
+### npm scope
 
-| Query | Result |
-|---|---|
-| `GET registry.npmjs.org/@quorum%2fsdk` | `404` — the name has never been published |
-| `search?text=scope:quorum` | `0` packages under the `@quorum` scope |
-| `GET registry.npmjs.org/-/org/quorum/user` | `200` — the `quorum` scope exists on npm (a non-existent name returns `404 Scope not found`) |
-
-So `@quorum/sdk` is free and no rename is needed — but the scope existing is
-not the same as *this project* owning it. Before the first release, a
-maintainer logged into npm must confirm access:
+Before the first release, confirm the `@quorum` scope is owned by the project:
 
 ```bash
 npm whoami
@@ -26,82 +18,95 @@ npm org ls quorum        # must list you (or your team) as owner/admin
 - If it exists and you are not: ask an owner to run
   `npm org add quorum <npm-user> --role admin`.
 - If it does not exist for you at all: create it (npmjs.com → create
-  organization, free for public packages), or rename the package.
+  organization, free for public packages).
 
-**Renaming**, if the scope cannot be claimed: change `name` in
-`sdk/package.json` (the `exports` map is name-independent), then update the
-install commands in the root `README.md` and `sdk/README.md`. Re-run
-`npm run check:publish` — it prints the same scope report on every release.
+### GitHub secrets
 
-## Credentials
-
-| What | Where |
+| Secret | Purpose |
 |---|---|
-| npm granular access token with *publish* permission for the scope | GitHub repo secret `NPM_TOKEN` |
-| Provenance (signed by GitHub OIDC) | already handled — `publish.yml` sets `permissions: id-token: write` and passes `--provenance` |
+| NPM_TOKEN | npm granular access token with *publish* permission for @quorum/* |
 
 Create the token on npmjs.com → *Access Tokens* → *Generate New Token* →
 *Granular Token*, restricted to publish on `@quorum/*`, and add it as a
-repository secret. Rotate it if it leaks or the team changes.
+repository secret.
 
-`npm publish` runs `prepublishOnly` (`build` + the ESM/CJS smoke test), so a
-manual publish from a laptop is guarded the same way CI is.
+## Versioning policy
 
-## Versioning policy (pre-1.0)
+All components share a single version number defined in `sdk/package.json`.
+The project is currently in pre-1.0: `0.MINOR.PATCH`.
 
-The package is `0.MINOR.PATCH` until 1.0.
-
-| Bump | Use it for |
-|---|---|
-| **PATCH** `0.1.0 → 0.1.1` | Bug fixes, documentation, performance — no public API change |
-| **MINOR** `0.1.0 → 0.2.0` | New API **and breaking changes**. While the major version is `0`, anything may break in a MINOR; every breaking change must be called out in the release notes |
-| **MAJOR** `0.x → 1.0.0` | The stability contract starts: after 1.0, strict SemVer, breaking changes only in MAJOR |
+| Bump   | Use it for                                                                    |
+|--------|--------------------------------------------------------------------------------|
+| PATCH  | Bug fixes, documentation, performance — no public API change                   |
+| MINOR  | New API **and breaking changes**. Breaking changes must be noted in release notes |
+| MAJOR  | The stability contract starts: after 1.0, strict SemVer, breaking changes only in MAJOR |
 
 Rules that apply to every release:
 
-1. `sdk/package.json` is the single source of version truth — the repository
-   root has its own independent version.
-2. Never republish a published version: npm rejects it, and consumers cache
-   by version. Bump instead.
-3. The git tag must be `sdk-vX.Y.Z` and equal the version in
-   `sdk/package.json`; `publish.yml` fails the run otherwise.
-4. `npm run check:publish` runs before every publish and fails if the version
-   is already on the registry.
+1. `sdk/package.json` is the single source of version truth
+2. Never republish a published version: bump instead
+3. The git tag must be `vX.Y.Z` and equal the version in `sdk/package.json`
+4. `npm run check:publish` runs before every publish and fails if the version is already on the registry
 
 ## Release checklist
 
+1. Update version in `sdk/package.json`:
+
 ```bash
 cd sdk
-npm run verify            # lint + build + test + ESM/CJS smoke test
-npm version 0.2.0 --no-git-tag-version   # or edit package.json
-git add package.json package-lock.json
-git commit -m "sdk: release v0.2.0"
+npm version 0.2.0 --no-git-tag-version   # or edit package.json directly
+cd ..
+git add sdk/package.json sdk/package-lock.json
+git commit -m "release: v0.2.0"
 git push
 ```
 
-Then, once that is on `main`:
+1. Push the version tag to trigger the release workflow:
 
 ```bash
-git tag sdk-v0.2.0
-git push origin sdk-v0.2.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
-The [publish workflow](../.github/workflows/publish.yml) lints, builds both
-formats, tests, smoke-tests, checks the tag/version, and runs
-`npm publish --access public --provenance` with `NPM_TOKEN`.
+The [release workflow](../.github/workflows/release.yml) will:
 
-Verify the result:
+- Build and test contracts
+- Generate contract WASM artifacts and specs
+- Build and test SDK
+- Build frontend
+- Generate release notes from commit history
+- Create a GitHub release with all artifacts attached
+- Publish `@quorum/sdk` to npm with provenance
+
+## What gets released
+
+| Component | Artifact |
+|-----------|----------|
+| Contracts | `quorum_token.wasm`, `quorum_governance.wasm` |
+| Specs | `quorum-token.spec.json`, `quorum-governance.spec.json` |
+| SDK | `@quorum/sdk@X.Y.Z` on npm |
+| Frontend | Built as part of CI (not published separately) |
+
+## Verification
+
+After the release completes:
 
 ```bash
+# Verify npm package
 npm view @quorum/sdk version
 npm install @quorum/sdk
+
+# Verify GitHub release artifacts
+gh release view v0.2.0
 ```
 
-## Dry run
+## Manual trigger
 
-```bash
-cd sdk
-npm run build
-npm pack --dry-run     # exactly which files ship (dist/, package.json, README)
-npm publish --dry-run  # full publish flow without touching the registry
-```
+To trigger a release manually without pushing a tag:
+
+1. Go to Actions → Release workflow
+2. Click "Run workflow"
+3. Enter the tag (e.g., `v0.2.0`)
+4. Click "Run workflow"
+
+This is useful for re-running a failed release or testing the workflow.

@@ -1,0 +1,282 @@
+name: Release
+
+# Unified release workflow that triggers on version tags and:
+# - Builds and attaches contract WASM artifacts
+# - Generates and attaches contract specs
+# - Publishes @quorum/sdk to npm
+# - Generates release notes from commit history
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  STELLAR_CLI_VERSION: 25.2.0
+  STELLAR_CLI_SHA256: da809a7b6ec3e66a5dd6ebdf199cdd638007bd5c063bfd6d18ae63a18b1b86b6
+
+jobs:
+  validate-tag:
+    name: Validate tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+      tag: ${{ steps.validate.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: validate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          
+          # Validate tag format (vX.Y.Z)
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Invalid tag format: $TAG (expected vX.Y.Z)" >&2
+            exit 1
+          fi
+          
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Releasing version $VERSION (tag: $TAG)"
+
+  build-contracts:
+    name: Build contracts
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+          key: cargo-${{ hashFiles('contracts/Cargo.lock') }}
+          cache-on-failure: true
+      - name: Install Stellar CLI
+        run: |
+          archive="stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/${archive}"
+          echo "${STELLAR_CLI_SHA256}  ${archive}" | sha256sum --check
+          tar -xzf "$archive" stellar
+          sudo install -m 0755 stellar /usr/local/bin/stellar
+          stellar --version
+      - name: Build contracts
+        run: cd contracts && cargo build --target wasm32-unknown-unknown --release
+      - name: Generate spec JSON
+        run: |
+          mkdir -p specs
+          wasm_dir=contracts/target/wasm32-unknown-unknown/release
+          for name in token governance; do
+            stellar contract info interface \
+              --wasm "$wasm_dir/quorum_${name}.wasm" \
+              --output json-formatted > "specs/quorum-${name}.spec.json"
+          done
+      - name: Validate specs
+        run: |
+          for spec in specs/*.spec.json; do
+            python3 - "$spec" <<'PY'
+          import json, sys
+          path = sys.argv[1]
+          entries = json.load(open(path))
+          if not isinstance(entries, list) or not any("function_v0" in e for e in entries):
+              sys.exit(f"{path}: no contract functions in spec")
+          print(f"{path}: {len(entries)} spec entries")
+          PY
+          done
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-wasm
+          path: contracts/target/wasm32-unknown-unknown/release/*.wasm
+      - name: Upload spec artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-specs
+          path: specs/*.spec.json
+
+  build-sdk:
+    name: Build SDK
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify tag matches package.json
+        run: |
+          version=$(node -p "require('./sdk/package.json').version")
+          if [ "${{ needs.validate-tag.outputs.version }}" != "$version" ]; then
+            echo "Tag version ${{ needs.validate-tag.outputs.version }} does not match sdk/package.json ($version)" >&2
+            exit 1
+          fi
+      - name: Build SDK
+        run: cd sdk && npm ci && npm run build
+      - name: Test SDK
+        run: cd sdk && npm test -- --ci
+      - name: Upload SDK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-dist
+          path: sdk/dist
+
+  build-frontend:
+    name: Build frontend
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            sdk/package-lock.json
+      - name: Build SDK
+        run: cd sdk && npm ci && npm run build
+      - name: Build frontend
+        run: cd frontend && npm ci && npm run build
+      - name: Upload frontend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/.next
+
+  generate-release-notes:
+    name: Generate release notes
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    outputs:
+      notes: ${{ steps.notes.outputs.content }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: notes
+        run: |
+          TAG="${{ needs.validate-tag.outputs.tag }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || echo "")
+          
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found, using all commits"
+            RANGE="$TAG"
+          else
+            RANGE="$PREV_TAG..$TAG"
+          fi
+          
+          echo "## What's Changed" > notes.md
+          echo "" >> notes.md
+          
+          # Get commit messages
+          git log "$RANGE" --pretty=format:"- %s (%h)" >> notes.md || true
+          
+          # Get contributors
+          echo "" >> notes.md
+          echo "## Contributors" >> notes.md
+          git log "$RANGE" --pretty=format:"- %an" | sort -u >> notes.md || true
+          
+          # Add artifact info
+          echo "" >> notes.md
+          echo "## Artifacts" >> notes.md
+          echo "- Contract WASM: \`quorum_token.wasm\`, \`quorum_governance.wasm\`" >> notes.md
+          echo "- Contract specs: \`quorum-token.spec.json\`, \`quorum-governance.spec.json\`" >> notes.md
+          echo "- SDK: \`@quorum/sdk@${{ needs.validate-tag.outputs.version }}\`" >> notes.md
+          
+          # Read and output
+          CONTENT=$(cat notes.md)
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "Generated release notes:"
+          cat notes.md
+
+  create-release:
+    name: Create GitHub release
+    needs: [validate-tag, build-contracts, build-sdk, build-frontend, generate-release-notes]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download WASM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: contract-wasm
+          path: artifacts/wasm
+      - name: Download spec artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: contract-specs
+          path: artifacts/specs
+      - name: Download SDK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-dist
+          path: artifacts/sdk
+      - name: Download frontend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: artifacts/frontend
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate-tag.outputs.tag }}
+          NOTES: ${{ needs.generate-release-notes.outputs.notes }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "$NOTES" \
+            artifacts/wasm/*.wasm \
+            artifacts/specs/*.json \
+            --repo ${{ github.repository }}
+
+  publish-sdk:
+    name: Publish SDK to npm
+    needs: [validate-tag, build-sdk, create-release]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Download SDK artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-dist
+          path: sdk/dist
+      - name: Verify the release tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "${{ needs.validate-tag.outputs.version }}" != "$version" ]; then
+            echo "Tag ${{ needs.validate-tag.outputs.tag }} does not match sdk/package.json ($version)" >&2
+            exit 1
+          fi
+      - name: Check the version is publishable
+        run: npm run check:publish
+      - name: Publish
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
