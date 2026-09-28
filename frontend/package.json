@@ -12,10 +12,10 @@
   },
   "dependencies": {
     "@quorum/sdk": "file:../sdk",
-    "lucide-react": "^1.16.0",
-    "next": "16.2.6",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "lucide-react": "^1.48.0",
+    "next": "16.3.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -26,7 +26,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "16.3.6",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "tailwindcss": "^4",
