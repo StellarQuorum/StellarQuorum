@@ -2386,3 +2386,429 @@ fn create_proposal_accepts_valid_title_with_leading_trailing_spaces() {
 
     assert!(result.is_ok());
 }
+
+// ============================================================================
+// Tests for Issue #75: Emit event on initialize()
+// ============================================================================
+
+#[test]
+fn initialize_emits_event_with_config() {
+    let env = Env::default();
+    env.mock_all_auths();
+    
+    let admin = Address::generate(&env);
+    let guardian = Address::generate(&env);
+    let token_id = env.register(QuorumToken, ());
+    
+    QuorumTokenClient::new(&env, &token_id).initialize(
+        &admin,
+        &String::from_str(&env, "Quorum"),
+        &String::from_str(&env, "QUORUM"),
+        &7,
+        &1_000_000,
+    );
+    
+    let governance_id = env.register(GovernanceContract, ());
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    
+    governance.initialize(
+        &admin,
+        &guardian,
+        &token_id,
+        &QUORUM_BPS,
+        &VOTING_PERIOD,
+        &TIMELOCK_PERIOD,
+        &EXECUTION_GRACE,
+        &PROPOSAL_THRESHOLD,
+    );
+    
+    // Verify the event was emitted
+    let events = env.events().all();
+    let init_event = events.iter().find(|e| {
+        if let Ok(topics) = <(Symbol,)>::try_from_val(&env, &e.topics) {
+            topics.0 == Symbol::new(&env, "contract_initialized")
+        } else {
+            false
+        }
+    });
+    
+    assert!(init_event.is_some(), "ContractInitialized event should be emitted");
+    
+    // Verify event payload
+    if let Some(event) = init_event {
+        let payload: ContractInitialized = event.data.try_into_val(&env).unwrap();
+        assert_eq!(payload.admin, admin);
+        assert_eq!(payload.guardian, guardian);
+        assert_eq!(payload.token, token_id);
+        assert_eq!(payload.quorum_bps, QUORUM_BPS);
+        assert_eq!(payload.voting_period, VOTING_PERIOD);
+        assert_eq!(payload.timelock_period, TIMELOCK_PERIOD);
+        assert_eq!(payload.execution_grace_period, EXECUTION_GRACE);
+        assert_eq!(payload.proposal_threshold, PROPOSAL_THRESHOLD);
+    }
+}
+
+// ============================================================================
+// Tests for Issue #76: Add get_proposals(start, limit) for paginated reads
+// ============================================================================
+
+#[test]
+fn get_proposals_returns_empty_for_no_proposals() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    
+    let proposals = governance.get_proposals(&1, &10).unwrap();
+    assert_eq!(proposals.len(), 0);
+}
+
+#[test]
+fn get_proposals_returns_bounded_page() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+    
+    // Create 5 proposals
+    for i in 1..=5 {
+        governance.create_proposal(
+            &proposer,
+            &String::from_str(&env, &format!("Proposal {}", i)),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, ""),
+        );
+    }
+    
+    // Request 3 proposals starting from ID 1
+    let proposals = governance.get_proposals(&1, &3).unwrap();
+    assert_eq!(proposals.len(), 3);
+    assert_eq!(proposals.get(0).unwrap().id, 1);
+    assert_eq!(proposals.get(1).unwrap().id, 2);
+    assert_eq!(proposals.get(2).unwrap().id, 3);
+}
+
+#[test]
+fn get_proposals_handles_out_of_range_start() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+    
+    // Create 2 proposals
+    governance.create_proposal(
+        &proposer,
+        &String::from_str(&env, "Proposal 1"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    governance.create_proposal(
+        &proposer,
+        &String::from_str(&env, "Proposal 2"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    
+    // Start beyond last proposal
+    let proposals = governance.get_proposals(&10, &5).unwrap();
+    assert_eq!(proposals.len(), 0);
+    
+    // Start at 0
+    let proposals = governance.get_proposals(&0, &5).unwrap();
+    assert_eq!(proposals.len(), 0);
+}
+
+#[test]
+fn get_proposals_enforces_max_page_size() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+    
+    // Create 10 proposals
+    for i in 1..=10 {
+        governance.create_proposal(
+            &proposer,
+            &String::from_str(&env, &format!("Proposal {}", i)),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, ""),
+        );
+    }
+    
+    // Request more than MAX_PAGE_SIZE (which is 100), should be capped
+    let proposals = governance.get_proposals(&1, &200).unwrap();
+    assert!(proposals.len() <= 100);
+}
+
+#[test]
+fn get_proposals_paging_boundaries() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+    
+    // Create 7 proposals
+    for i in 1..=7 {
+        governance.create_proposal(
+            &proposer,
+            &String::from_str(&env, &format!("Proposal {}", i)),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, ""),
+        );
+    }
+    
+    // Page 1: proposals 1-3
+    let page1 = governance.get_proposals(&1, &3).unwrap();
+    assert_eq!(page1.len(), 3);
+    assert_eq!(page1.get(0).unwrap().id, 1);
+    
+    // Page 2: proposals 4-6
+    let page2 = governance.get_proposals(&4, &3).unwrap();
+    assert_eq!(page2.len(), 3);
+    assert_eq!(page2.get(0).unwrap().id, 4);
+    
+    // Page 3: proposal 7 (partial page)
+    let page3 = governance.get_proposals(&7, &3).unwrap();
+    assert_eq!(page3.len(), 1);
+    assert_eq!(page3.get(0).unwrap().id, 7);
+}
+
+// ============================================================================
+// Tests for Issue #77: Add get_proposals_by_proposer(address)
+// ============================================================================
+
+#[test]
+fn get_proposals_by_proposer_empty_for_new_address() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let never_proposed = Address::generate(&env);
+    
+    let proposals = governance.get_proposals_by_proposer(&never_proposed);
+    assert_eq!(proposals.len(), 0);
+}
+
+#[test]
+fn get_proposals_by_proposer_returns_only_proposer_proposals() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    
+    let proposer_a = Address::generate(&env);
+    let proposer_b = Address::generate(&env);
+    
+    // Proposer A creates 2 proposals
+    let id1 = governance.create_proposal(
+        &proposer_a,
+        &String::from_str(&env, "Proposal A1"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    
+    governance.create_proposal(
+        &proposer_b,
+        &String::from_str(&env, "Proposal B1"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    
+    let id3 = governance.create_proposal(
+        &proposer_a,
+        &String::from_str(&env, "Proposal A2"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    
+    // Get proposals by proposer A
+    let proposals_a = governance.get_proposals_by_proposer(&proposer_a);
+    assert_eq!(proposals_a.len(), 2);
+    assert_eq!(proposals_a.get(0).unwrap().id, id1);
+    assert_eq!(proposals_a.get(1).unwrap().id, id3);
+    assert_eq!(proposals_a.get(0).unwrap().proposer, proposer_a);
+    assert_eq!(proposals_a.get(1).unwrap().proposer, proposer_a);
+    
+    // Get proposals by proposer B
+    let proposals_b = governance.get_proposals_by_proposer(&proposer_b);
+    assert_eq!(proposals_b.len(), 1);
+    assert_eq!(proposals_b.get(0).unwrap().proposer, proposer_b);
+}
+
+#[test]
+fn get_proposals_by_proposer_multiple_proposals() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+    
+    // Create 5 proposals from same proposer
+    for i in 1..=5 {
+        governance.create_proposal(
+            &proposer,
+            &String::from_str(&env, &format!("Proposal {}", i)),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, ""),
+        );
+    }
+    
+    let proposals = governance.get_proposals_by_proposer(&proposer);
+    assert_eq!(proposals.len(), 5);
+    
+    // Verify all proposals are from the same proposer
+    for i in 0..5 {
+        assert_eq!(proposals.get(i).unwrap().proposer, proposer);
+    }
+}
+
+// ============================================================================
+// Tests for Issue #78: Add view returning whether proposal reached quorum
+// ============================================================================
+
+#[test]
+fn has_reached_quorum_returns_false_for_no_votes() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+    
+    let proposal_id = governance.create_proposal(
+        &proposer,
+        &String::from_str(&env, "Test Proposal"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    
+    let reached_quorum = governance.has_reached_quorum(&proposal_id).unwrap();
+    assert_eq!(reached_quorum, false);
+}
+
+#[test]
+fn has_reached_quorum_returns_true_when_quorum_met() {
+    let env = Env::default();
+    let (admin, token_id, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let token = QuorumTokenClient::new(&env, &token_id);
+    
+    let voter = Address::generate(&env);
+    // Transfer 60,000 tokens (quorum requires 50,000 = 5% of 1M)
+    token.transfer(&admin, &voter, &60_000);
+    
+    let proposal_id = governance.create_proposal(
+        &voter,
+        &String::from_str(&env, "Test Proposal"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    
+    // Before voting, quorum not reached
+    assert_eq!(governance.has_reached_quorum(&proposal_id).unwrap(), false);
+    
+    // Vote with 60,000 tokens (support=1 means for)
+    governance.vote(&voter, &proposal_id, &1);
+    
+    // After voting, quorum reached
+    assert_eq!(governance.has_reached_quorum(&proposal_id).unwrap(), true);
+}
+
+#[test]
+fn has_reached_quorum_counts_all_vote_types() {
+    let env = Env::default();
+    let (admin, token_id, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let token = QuorumTokenClient::new(&env, &token_id);
+    
+    let voter1 = Address::generate(&env);
+    let voter2 = Address::generate(&env);
+    let voter3 = Address::generate(&env);
+    
+    // Distribute tokens: each gets less than quorum individually
+    token.transfer(&admin, &voter1, &20_000); // for
+    token.transfer(&admin, &voter2, &20_000); // against
+    token.transfer(&admin, &voter3, &15_000); // abstain
+    
+    let proposer = Address::generate(&env);
+    let proposal_id = governance.create_proposal(
+        &proposer,
+        &String::from_str(&env, "Test Proposal"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    
+    // Vote: 20k for, 20k against, 15k abstain = 55k total (> 50k quorum)
+    governance.vote(&voter1, &proposal_id, &1); // for
+    governance.vote(&voter2, &proposal_id, &0); // against
+    governance.vote(&voter3, &proposal_id, &2); // abstain
+    
+    // Quorum should be reached (55k > 50k)
+    assert_eq!(governance.has_reached_quorum(&proposal_id).unwrap(), true);
+}
+
+#[test]
+fn has_reached_quorum_agrees_with_finalize() {
+    let env = Env::default();
+    let (admin, token_id, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let token = QuorumTokenClient::new(&env, &token_id);
+    
+    let voter = Address::generate(&env);
+    token.transfer(&admin, &voter, &60_000);
+    
+    let proposal_id = governance.create_proposal(
+        &voter,
+        &String::from_str(&env, "Test Proposal"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    
+    governance.vote(&voter, &proposal_id, &1); // for
+    
+    // Verify quorum reached before finalize
+    assert_eq!(governance.has_reached_quorum(&proposal_id).unwrap(), true);
+    
+    // Advance past voting period
+    let proposal = governance.get_proposal(&proposal_id);
+    env.ledger().set_sequence(proposal.end_ledger + 1);
+    
+    // Finalize and check status
+    let status = governance.finalize(&proposal_id).unwrap();
+    assert_eq!(status, ProposalStatus::Queued); // Passed
+}
+
+#[test]
+fn has_reached_quorum_agrees_with_finalize_failed() {
+    let env = Env::default();
+    let (admin, token_id, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let token = QuorumTokenClient::new(&env, &token_id);
+    
+    let voter = Address::generate(&env);
+    token.transfer(&admin, &voter, &30_000); // Less than 50k quorum
+    
+    let proposal_id = governance.create_proposal(
+        &voter,
+        &String::from_str(&env, "Test Proposal"),
+        &String::from_str(&env, "Description"),
+        &String::from_str(&env, ""),
+    );
+    
+    governance.vote(&voter, &proposal_id, &1); // for
+    
+    // Verify quorum NOT reached before finalize
+    assert_eq!(governance.has_reached_quorum(&proposal_id).unwrap(), false);
+    
+    // Advance past voting period
+    let proposal = governance.get_proposal(&proposal_id);
+    env.ledger().set_sequence(proposal.end_ledger + 1);
+    
+    // Finalize and check status
+    let status = governance.finalize(&proposal_id).unwrap();
+    assert_eq!(status, ProposalStatus::Failed); // Failed due to no quorum
+}
+
+#[test]
+fn has_reached_quorum_errors_for_nonexistent_proposal() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    
+    let result = governance.try_has_reached_quorum(&999);
+    assert_eq!(result, Err(Ok(GovernanceError::ProposalNotFound)));
+}
