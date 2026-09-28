@@ -22,6 +22,8 @@ impl ReentrantCallback {
 const QUORUM_BPS: u32 = 500; // 5%
 const VOTING_PERIOD: u32 = 100;
 const TIMELOCK_PERIOD: u32 = 50;
+const TIMELOCK: u32 = TIMELOCK_PERIOD;
+const EXECUTION_GRACE: u32 = LEDGERS_PER_DAY * 7;
 const PROPOSAL_THRESHOLD: i128 = 0;
 
 /// Registers a QUORUM token and a governor wired to it, minting `initial_supply`
@@ -2101,4 +2103,286 @@ fn get_voting_power_for_nonexistent_proposal_errors() {
         governance.try_get_voting_power(&999, &Address::generate(&env)),
         Err(Ok(GovernanceError::ProposalNotFound))
     );
+}
+
+// Tests for issue #71: minimum timelock period validation
+#[test]
+fn initialize_rejects_zero_timelock() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let guardian = Address::generate(&env);
+
+    let token_id = env.register(QuorumToken, ());
+    QuorumTokenClient::new(&env, &token_id).initialize(
+        &admin,
+        &String::from_str(&env, "Quorum"),
+        &String::from_str(&env, "QUORUM"),
+        &7,
+        &1_000_000,
+    );
+
+    let governance_id = env.register(GovernanceContract, ());
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    let result = governance.try_initialize(
+        &admin,
+        &guardian,
+        &token_id,
+        &QUORUM_BPS,
+        &VOTING_PERIOD,
+        &0, // timelock_period = 0
+        &EXECUTION_GRACE,
+        &0,
+    );
+
+    assert_eq!(result, Err(Ok(GovernanceError::MinimumTimelockRequired)));
+}
+
+#[test]
+fn initialize_accepts_minimum_timelock_of_one() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let guardian = Address::generate(&env);
+
+    let token_id = env.register(QuorumToken, ());
+    QuorumTokenClient::new(&env, &token_id).initialize(
+        &admin,
+        &String::from_str(&env, "Quorum"),
+        &String::from_str(&env, "QUORUM"),
+        &7,
+        &1_000_000,
+    );
+
+    let governance_id = env.register(GovernanceContract, ());
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    let result = governance.try_initialize(
+        &admin,
+        &guardian,
+        &token_id,
+        &QUORUM_BPS,
+        &VOTING_PERIOD,
+        &1, // timelock_period = 1 (minimum)
+        &EXECUTION_GRACE,
+        &0,
+    );
+
+    assert!(result.is_ok());
+}
+
+// Tests for issue #72: minimum quorum floor validation
+#[test]
+fn initialize_rejects_zero_quorum_bps() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let guardian = Address::generate(&env);
+
+    let token_id = env.register(QuorumToken, ());
+    QuorumTokenClient::new(&env, &token_id).initialize(
+        &admin,
+        &String::from_str(&env, "Quorum"),
+        &String::from_str(&env, "QUORUM"),
+        &7,
+        &1_000_000,
+    );
+
+    let governance_id = env.register(GovernanceContract, ());
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    let result = governance.try_initialize(
+        &admin,
+        &guardian,
+        &token_id,
+        &0, // quorum_bps = 0
+        &VOTING_PERIOD,
+        &TIMELOCK,
+        &EXECUTION_GRACE,
+        &0,
+    );
+
+    assert_eq!(result, Err(Ok(GovernanceError::MinimumQuorumRequired)));
+}
+
+#[test]
+fn initialize_accepts_minimum_quorum_of_one() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let guardian = Address::generate(&env);
+
+    let token_id = env.register(QuorumToken, ());
+    QuorumTokenClient::new(&env, &token_id).initialize(
+        &admin,
+        &String::from_str(&env, "Quorum"),
+        &String::from_str(&env, "QUORUM"),
+        &7,
+        &1_000_000,
+    );
+
+    let governance_id = env.register(GovernanceContract, ());
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    let result = governance.try_initialize(
+        &admin,
+        &guardian,
+        &token_id,
+        &1, // quorum_bps = 1 (minimum)
+        &VOTING_PERIOD,
+        &TIMELOCK,
+        &EXECUTION_GRACE,
+        &0,
+    );
+
+    assert!(result.is_ok());
+}
+
+// Tests for issue #73: title and description length validation
+#[test]
+fn create_proposal_rejects_oversized_title() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create a title exceeding 200 bytes
+    let long_title = String::from_str(&env, &"x".repeat(201));
+
+    let result = governance.try_create_proposal(
+        &proposer,
+        &long_title,
+        &String::from_str(&env, "Valid description"),
+        &String::from_str(&env, "https://example.com"),
+    );
+
+    assert_eq!(result, Err(Ok(GovernanceError::TitleTooLong)));
+}
+
+#[test]
+fn create_proposal_accepts_title_at_max_length() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create a title exactly 200 bytes
+    let max_title = String::from_str(&env, &"x".repeat(200));
+
+    let result = governance.try_create_proposal(
+        &proposer,
+        &max_title,
+        &String::from_str(&env, "Valid description"),
+        &String::from_str(&env, "https://example.com"),
+    );
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn create_proposal_rejects_oversized_description() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create a description exceeding 10,000 bytes
+    let long_description = String::from_str(&env, &"x".repeat(10_001));
+
+    let result = governance.try_create_proposal(
+        &proposer,
+        &String::from_str(&env, "Valid title"),
+        &long_description,
+        &String::from_str(&env, "https://example.com"),
+    );
+
+    assert_eq!(result, Err(Ok(GovernanceError::DescriptionTooLong)));
+}
+
+#[test]
+fn create_proposal_accepts_description_at_max_length() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Create a description exactly 10,000 bytes
+    let max_description = String::from_str(&env, &"x".repeat(10_000));
+
+    let result = governance.try_create_proposal(
+        &proposer,
+        &String::from_str(&env, "Valid title"),
+        &max_description,
+        &String::from_str(&env, "https://example.com"),
+    );
+
+    assert!(result.is_ok());
+}
+
+// Tests for issue #74: empty title validation
+#[test]
+fn create_proposal_rejects_empty_title() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    let result = governance.try_create_proposal(
+        &proposer,
+        &String::from_str(&env, ""),
+        &String::from_str(&env, "Valid description"),
+        &String::from_str(&env, "https://example.com"),
+    );
+
+    assert_eq!(result, Err(Ok(GovernanceError::EmptyTitle)));
+}
+
+#[test]
+fn create_proposal_rejects_whitespace_only_title() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    let result = governance.try_create_proposal(
+        &proposer,
+        &String::from_str(&env, "   "),
+        &String::from_str(&env, "Valid description"),
+        &String::from_str(&env, "https://example.com"),
+    );
+
+    assert_eq!(result, Err(Ok(GovernanceError::EmptyTitle)));
+}
+
+#[test]
+fn create_proposal_accepts_valid_title_with_leading_trailing_spaces() {
+    let env = Env::default();
+    let (_, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let proposer = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Title with spaces but non-whitespace content should be accepted
+    let result = governance.try_create_proposal(
+        &proposer,
+        &String::from_str(&env, "  Valid Title  "),
+        &String::from_str(&env, "Valid description"),
+        &String::from_str(&env, "https://example.com"),
+    );
+
+    assert!(result.is_ok());
 }
