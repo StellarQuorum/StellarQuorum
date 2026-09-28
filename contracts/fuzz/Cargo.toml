@@ -1,0 +1,42 @@
+[package]
+name = "quorum-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+soroban-sdk = { version = "22.0.0", features = ["testutils"] }
+quorum-governance = { path = "../governance", features = ["testutils"] }
+quorum-token = { path = "../token", features = ["testutils"] }
+
+# Standalone workspace: fuzz targets build with cargo-fuzz (nightly, ASan) and
+# must never join the contracts workspace build.
+[workspace]
+
+# cargo-fuzz builds with these profiles; keep overflow checks on so arithmetic
+# traps surface as panics libFuzzer can catch, matching the contracts workspace
+# profiles, and keep line tables so crash stacks resolve to contract lines.
+[profile.dev]
+overflow-checks = true
+
+[profile.release]
+overflow-checks = true
+debug = 1
+
+[[bin]]
+name = "vote"
+path = "fuzz_targets/vote.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "finalize"
+path = "fuzz_targets/finalize.rs"
+test = false
+doc = false
+bench = false

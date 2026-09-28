@@ -685,6 +685,57 @@ fn finalize_before_the_deadline_is_rejected() {
     );
 }
 
+/// Quorum is total turnout, not the winning side: 40_000 For plus 20_000
+/// Against is 60_000 of a 1_000_000 supply — over the 50_000 threshold —
+/// even though For alone sits below it. Splitting the tally across the
+/// wrong operators would drop this proposal below quorum.
+#[test]
+fn finalize_counts_for_and_against_together_toward_quorum() {
+    let env = Env::default();
+    let supporters = Address::generate(&env);
+    let opposition = Address::generate(&env);
+    let (_, governance_id, proposal_id) = open_with_holders(
+        &env,
+        1_000_000,
+        QUORUM_BPS, // 5% of 1_000_000 = 50_000
+        &[(supporters.clone(), 40_000), (opposition.clone(), 20_000)],
+    );
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    governance.vote(&supporters, &proposal_id, &VOTE_FOR);
+    governance.vote(&opposition, &proposal_id, &VOTE_AGAINST);
+    close_voting(&env, &governance, proposal_id);
+
+    // 60_000 turnout clears quorum and For beats Against, so it queues.
+    assert_eq!(governance.finalize(&proposal_id), ProposalStatus::Queued);
+}
+
+/// Abstentions count toward turnout: they are not For, but they are votes
+/// cast, and SEP-20/quorum rules here measure participation, not agreement.
+/// Dropping them from the tally would push 60_000 turnout under the 50_000
+/// threshold and fail a proposal that should queue.
+#[test]
+fn finalize_counts_abstentions_toward_quorum() {
+    let env = Env::default();
+    let supporters = Address::generate(&env);
+    let spectators = Address::generate(&env);
+    let (_, governance_id, proposal_id) = open_with_holders(
+        &env,
+        1_000_000,
+        QUORUM_BPS, // 5% of 1_000_000 = 50_000
+        &[(supporters.clone(), 30_000), (spectators.clone(), 30_000)],
+    );
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    governance.vote(&supporters, &proposal_id, &VOTE_FOR);
+    governance.vote(&spectators, &proposal_id, &VOTE_ABSTAIN);
+    close_voting(&env, &governance, proposal_id);
+
+    // 30_000 For + 30_000 Abstain = 60_000 turnout, and For outvotes the
+    // empty Against tally, so the proposal queues.
+    assert_eq!(governance.finalize(&proposal_id), ProposalStatus::Queued);
+}
+
 // ─── Execute ─────────────────────────────────────────────────────────────────
 
 /// Votes the proposal through and finalizes it into Queued.
@@ -888,6 +939,33 @@ fn reading_a_proposal_extends_its_ttl() {
     assert!(before < TTL_THRESHOLD, "entry should have aged below the threshold");
     assert!(after > before, "read should have bumped the TTL");
     assert!(after >= TTL_THRESHOLD);
+}
+
+/// The bump has to fire while the entry still has days of life left, not
+/// only once it is nearly gone: read at ~100_000 ledgers remaining (about
+/// 5.8 days), still below the 30-day threshold but far above the floor.
+/// A threshold that no longer matches the documented 30-day window would
+/// leave the entry where it is instead of pushing it back out to 90 days.
+#[test]
+fn a_read_restores_the_ttl_while_the_entry_is_still_below_the_threshold() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(GENESIS);
+    let (admin, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    env.ledger().set_sequence_number(OPENED);
+    let id = propose(&env, &governance_id, &admin).id;
+
+    env.ledger()
+        .set_sequence_number(OPENED + TTL_EXTEND_TO - 100_000);
+    let before = proposal_ttl(&env, &governance_id, id);
+    assert!(before < TTL_THRESHOLD, "entry should have aged below the threshold");
+    assert!(before > LEDGERS_PER_DAY, "but should still have days of life left");
+
+    governance.get_proposal(&id);
+    let after = proposal_ttl(&env, &governance_id, id);
+
+    assert!(after >= TTL_THRESHOLD, "read should have bumped the TTL");
 }
 
 #[test]
@@ -1326,6 +1404,13 @@ fn full_lifecycle_passes_and_executes_after_timelock() {
     let status = governance.finalize(&id);
     assert_eq!(status, ProposalStatus::Queued);
 
+    // finalize() on the passing path emits both proposal_finalized and, last,
+    // proposal_queued — governance_events() preserves call order.
+    //
+    // Read them before any further contract call: the test Env enables
+    // soroban-env invocation metering, and that clears the host event buffer
+    // at the start of every top-level invocation. The get_proposal() below
+    // would otherwise wipe what finalize() just emitted.
     // Capture the finalize events before get_proposal(), which makes a new
     // invocation and replaces the test environment's last-invocation events.
     let events = governance_events(&env, &governance_id);

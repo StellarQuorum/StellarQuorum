@@ -1,3 +1,8 @@
+// The crate is `#![no_std]`, so `std` is not in the extern prelude. The
+// property tests below reach for `std::vec::Vec` on purpose: they run only on
+// the host under `#[cfg(test)]`, where std is linked by the test harness.
+extern crate std;
+
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 use soroban_sdk::testutils::storage::Persistent as _;
@@ -458,6 +463,16 @@ fn burn_beyond_balance_is_rejected() {
 }
 
 #[test]
+fn burn_of_the_entire_balance_is_allowed() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let holder = Address::generate(&env);
+    token.transfer(&admin, &holder, &1_000);
+
+    token.burn(&holder, &1_000);
+
+    assert_eq!(token.balance(&holder), 0);
+    assert_eq!(token.total_supply(), INITIAL_SUPPLY - 1_000);
 fn mint_that_would_overflow_total_supply_returns_overflow() {
     let env = Env::default();
     let (admin, token) = deploy(&env);
@@ -996,6 +1011,47 @@ fn multiple_transfers_in_one_ledger_collapse_to_closing_balance() {
 
     assert_eq!(token.get_past_balance(&recipient, &20), 125_000);
     assert_eq!(token.balance(&recipient), 125_000);
+}
+
+/// The collapse in `set_balance` is only observable by looking at the stored
+/// history: `get_past_balance` reads the last duplicate either way. Several
+/// writes in one ledger must therefore leave exactly one entry, or the binary
+/// search starts seeing ledger values that were never a closing balance.
+#[test]
+fn several_writes_in_one_ledger_store_a_single_checkpoint() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(10);
+    let (admin, token) = deploy(&env);
+    let holder = Address::generate(&env);
+
+    env.ledger().set_sequence_number(20);
+    token.transfer(&admin, &holder, &100_000);
+    token.mint(&holder, &50_000);
+    token.burn(&holder, &25_000);
+
+    let checkpoints: Vec<Checkpoint> = env.as_contract(&token.address, || {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Checkpoints(holder.clone()))
+            .unwrap()
+    });
+    assert_eq!(checkpoints.len(), 1);
+    assert_eq!(checkpoints.get(0).unwrap().ledger, 20);
+    assert_eq!(checkpoints.get(0).unwrap().balance, 125_000);
+
+    // A write on the next ledger still appends a second entry.
+    env.ledger().set_sequence_number(21);
+    token.transfer(&admin, &holder, &1);
+
+    let checkpoints: Vec<Checkpoint> = env.as_contract(&token.address, || {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Checkpoints(holder.clone()))
+            .unwrap()
+    });
+    assert_eq!(checkpoints.len(), 2);
+    assert_eq!(checkpoints.get(1).unwrap().ledger, 21);
+    assert_eq!(checkpoints.get(1).unwrap().balance, 125_001);
 }
 
 #[test]

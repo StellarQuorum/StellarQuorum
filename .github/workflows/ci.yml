@@ -48,6 +48,19 @@ jobs:
           cache-on-failure: true
       - name: Build contracts
         run: cd contracts && cargo build --target wasm32-unknown-unknown --release
+      # Soroban rents on contract bytes, so an unnoticed dependency bump that
+      # inflates the wasm artifacts costs real XLM on every deploy. The check
+      # records both artifact sizes in the job summary and fails on more than
+      # 10% growth over contracts/wasm-size-baseline.txt.
+      - name: WASM size check
+        run: bash scripts/check-wasm-size.sh
+      - name: Upload WASM size report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-size-report
+          path: wasm-size-report.md
+          if-no-files-found: ignore
       - name: Clippy
         run: cd contracts && cargo clippy --all-targets --all-features -- -D warnings
       - name: Run contract tests
@@ -142,7 +155,7 @@ jobs:
         run: cd frontend && npm audit --audit-level=high
 
   sdk:
-    name: Build & Test SDK
+    name: Build and test SDK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -75,6 +75,20 @@ stellar contract invoke --id $TOKEN_ID --rpc-url $RPC_URL \
   --network-passphrase "$PASSPHRASE" -- balance --owner $SOURCE_ACCOUNT
 ```
 
+## Contract Size and Rent
+
+Soroban charges rent on the bytes of the deployed wasm, so artifact size is a
+recurring cost, not just a build detail. CI fails if either artifact grows more
+than 10% over the committed baseline in
+[`contracts/wasm-size-baseline.txt`](../contracts/wasm-size-baseline.txt) and
+records the measured sizes in the job summary and the `wasm-size-report`
+artifact.
+
+Current baseline (release build): `quorum_token.wasm` **20,483 bytes**,
+`quorum_governance.wasm` **28,536 bytes**. Check locally with
+`bash scripts/check-wasm-size.sh`; see
+[CONTRIBUTING.md](../CONTRIBUTING.md#wasm-size-baseline) for updating it after
+an intentional change.
 ## Contract Specs
 
 The `Contract specs` workflow builds both contracts and generates their

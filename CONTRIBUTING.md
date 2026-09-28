@@ -122,6 +122,45 @@ All test suites and verification checks must pass before opening or merging a pu
 | **SDK** | Client SDK tests (`sdk/`) | `cd sdk && npm test` | `npm test` |
 | **Integration Stubs** | Integration test stubs (`tests/`) | `cd frontend && npx jest ../tests` | `npx jest tests/` |
 
+### Mutation Testing
+
+The contract suites also have a mutation run: `cargo mutants` rewrites guards,
+operators and constants in `contracts/*/src/lib.rs` one at a time and reruns the
+tests, which is the only way to tell that an assertion would actually catch the
+regression it claims to. It is not in per-PR CI (a full run takes ~2 hours);
+the latest run, its results and the triage of every surviving mutant are
+documented in [docs/mutation-testing.md](docs/mutation-testing.md).
+
+```bash
+cargo install cargo-mutants
+cd contracts
+cargo mutants --workspace --in-place --colors never   # results in mutants.out/
+```
+
+### Fuzz Testing
+
+`contracts/fuzz/` holds two `cargo-fuzz` targets, `vote` and `finalize`, that
+drive the governance entry points with untrusted input: raw `support` values,
+full-range `u32` voting and timelock periods, supplies up to `i128::MAX`,
+arbitrary proposal ids and ledger jumps. Besides success and declared contract
+errors, the harness treats invoke-level failures as crashes — that is how a
+trap emulated from a native panic (overflow, `panic!`, unwrap) surfaces. Two
+such traps were found and fixed this way (`end_ledger` in `create_proposal`,
+`queue_ledger` in `finalize`). It is not in per-PR CI; run it after touching
+tally, quorum, window or timelock arithmetic.
+
+```bash
+cargo install cargo-fuzz
+cd contracts
+cargo +nightly fuzz run vote -- -max_total_time=120       # any nightly; set RUSTUP_TOOLCHAIN if yours is pinned
+cargo +nightly fuzz run finalize -- -max_total_time=120
+```
+
+Hand-written seed cases live in `contracts/fuzz/corpus/{vote,finalize}/` and
+are committed; inputs a run discovers are added to the same directories. Crashes
+land in `contracts/fuzz/artifacts/` (gitignored): minimize with
+`cargo fuzz tmin <target> <crash-file>` and keep the result as a corpus seed.
+
 ### Prerequisites and Toolchains
 
 To run all test suites locally, ensure you have the following toolchains installed:
@@ -168,6 +207,7 @@ cargo build --target wasm32-unknown-unknown --release
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo audit --config audit.toml
+cd .. && bash scripts/check-wasm-size.sh   # wasm size regression check
 ```
 
 ### 2. Frontend (`frontend/`)
@@ -310,7 +350,38 @@ cargo build --target wasm32-unknown-unknown --release
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 cargo audit --config audit.toml
+cd .. && bash scripts/check-wasm-size.sh   # wasm size regression check
 ```
+
+### WASM Size Baseline
+
+Soroban charges rent on the deployed contract bytes, so the size of the two
+wasm artifacts is a real cost that must not grow unnoticed. CI builds both
+artifacts, records their sizes in the job summary (and as the
+`wasm-size-report` artifact), and fails the build if either has grown more
+than **10%** over the committed baseline.
+
+Check locally after a release build:
+
+```bash
+bash scripts/check-wasm-size.sh   # or: npm run check:wasm-size
+```
+
+**Current baseline** (`contracts/wasm-size-baseline.txt`, release profile):
+
+| Artifact | Baseline |
+| --- | ---: |
+| `quorum_token.wasm` | 20,483 bytes |
+| `quorum_governance.wasm` | 28,536 bytes |
+
+The threshold is 10% per artifact (`WASM_SIZE_MAX_GROWTH_PCT` overrides it),
+which leaves room for rustc/toolchain drift between your machine and CI while
+still catching a dependency bump or new feature that bloats a contract.
+
+If the growth is intentional (e.g. a deliberate feature that adds code), copy
+the `Current` sizes the script prints into `contracts/wasm-size-baseline.txt`
+and explain the growth in the PR description — reviewers should see the new
+cost in the diff.
 
 ---
 

@@ -239,12 +239,21 @@ impl GovernanceContract {
 
         let quorum_required =
             Self::quorum_for_supply(token.total_supply(), config.quorum_bps)?;
+        // Checked: initialize() accepts any u32 voting_period, so a period
+        // near u32::MAX would wrap the window and trap here. A trap would be
+        // unrecoverable; Overflow lets proposal creation fail cleanly instead.
+        let start_ledger = current
+            .checked_add(1)
+            .ok_or(GovernanceError::Overflow)?;
+        let end_ledger = start_ledger
+            .checked_add(config.voting_period)
+            .ok_or(GovernanceError::Overflow)?;
         let proposal = Proposal {
             id, proposer, title, description,
             for_votes: 0, against_votes: 0, abstain_votes: 0,
             snapshot_ledger: current,
-            start_ledger: current + 1,
-            end_ledger: current + 1 + config.voting_period,
+            start_ledger,
+            end_ledger,
             queue_ledger: 0,
             quorum_required,
             status: ProposalStatus::Active,
@@ -312,11 +321,25 @@ impl GovernanceContract {
         let mut proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
         if env.ledger().sequence() <= proposal.end_ledger { return Err(GovernanceError::VotingNotActive); }
-        let total = proposal.for_votes + proposal.against_votes + proposal.abstain_votes;
+        let config: Config = env.storage().instance().get(&DataKey::Config).unwrap();
+        // Checked, for the same reason as add_weight: honest tallies cannot
+        // exceed the supply, but nothing enforces that, and a trap here would
+        // be unrecoverable rather than an error a caller can handle.
+        let total = proposal
+            .for_votes
+            .checked_add(proposal.against_votes)
+            .and_then(|sum| sum.checked_add(proposal.abstain_votes))
+            .ok_or(GovernanceError::Overflow)?;
         let quorum_ok = total >= proposal.quorum_required;
         let majority_for = proposal.for_votes > proposal.against_votes;
         proposal.status = if quorum_ok && majority_for {
-            proposal.queue_ledger = env.ledger().sequence() + config.timelock_period;
+            // initialize() accepts any u32 timelock_period; queueing must not
+            // wrap the ledger sequence into a trap when it does.
+            proposal.queue_ledger = env
+                .ledger()
+                .sequence()
+                .checked_add(config.timelock_period)
+                .ok_or(GovernanceError::Overflow)?;
             ProposalStatus::Queued
         } else { ProposalStatus::Failed };
         let status = proposal.status.clone();

@@ -1,0 +1,22 @@
+# Soroban wasm size baseline — enforced by scripts/check-wasm-size.sh in CI.
+#
+# Format: <artifact filename> <size in bytes>, one per line.
+# Lines starting with # are comments.
+#
+# Recorded from a release build (`opt-level = "z"`, lto, panic = "abort",
+# strip = symbols) of the workspace on rustc 1.94.1 / soroban-sdk 22.0.x:
+#
+#   quorum_token.wasm        20,483 bytes
+#   quorum_governance.wasm   28,536 bytes
+#
+# The check allows each artifact to grow by at most 10% over these numbers
+# (override with WASM_SIZE_MAX_GROWTH_PCT). Toolchain drift between the local
+# rustc and the CI toolchain is expected to stay well inside that margin, so
+# a failure here means real growth — usually a dependency bump or new code.
+#
+# To update after an intentional change:
+#   1. Build:  cargo build --target wasm32-unknown-unknown --release --manifest-path contracts/Cargo.toml
+#   2. Report: bash scripts/check-wasm-size.sh   (prints current sizes)
+#   3. Copy the "Current" sizes below and explain the growth in the PR.
+quorum_token.wasm 20483
+quorum_governance.wasm 28536

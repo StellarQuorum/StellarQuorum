@@ -8,6 +8,7 @@
     "build": "cd frontend && npm run build",
     "build:sdk": "cd sdk && npm run build",
     "build:contracts": "cd contracts && cargo build --target wasm32-unknown-unknown --release",
+    "check:wasm-size": "bash scripts/check-wasm-size.sh",
     "lint": "cd frontend && npm run lint",
     "test": "cd frontend && npm test",
     "test:contracts": "cd contracts && cargo test",
