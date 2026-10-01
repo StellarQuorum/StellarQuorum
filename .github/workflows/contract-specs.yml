@@ -42,7 +42,7 @@ jobs:
       # Only used to attach the specs to a release; read-only otherwise.
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
@@ -86,7 +86,7 @@ jobs:
           PY
           done
       - name: Upload specs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contract-specs
           path: specs/*.spec.json
