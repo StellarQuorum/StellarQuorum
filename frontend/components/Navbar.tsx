@@ -22,6 +22,7 @@ export default function Navbar() {
           <Link href="/proposals" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">{t("nav.proposals")}</Link>
           <Link href="/create" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">{t("nav.create")}</Link>
           <Link href="/delegation" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">Delegation</Link>
+          <Link href="/settings" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">{t("nav.settings")}</Link>
           {address ? (
             <>
               <NotificationCenter address={address} />
