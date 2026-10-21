@@ -15,7 +15,7 @@ As Stellar moves from a foundation-driven upgrade model to community-driven gove
 
 | State | Description |
 |---|---|
-| Pending | Created, voting not yet started |
+| Pending | Created, voting not yet started (reported by `get_proposal_phase`; the stored status stays `Active`) |
 | Active | Voting window is open |
 | Failed | Quorum not reached or majority Against |
 | Queued | Passed, waiting in 48-hour timelock |

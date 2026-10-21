@@ -10,7 +10,7 @@ Soroban smart contract implementing on-chain governance for the Quorum protocol.
 - `vote` — cast For/Against/Abstain vote on active proposal
 - `finalize` — evaluate quorum after voting period ends
 - `execute` — execute queued proposal after timelock (must be within grace period if configured)
-- `cancel` — cancel by proposer or admin
+- `cancel` — cancel by proposer or admin while voting is open (`ProposalNotCancellable` otherwise)
 - `pause` — emergency pause proposal creation and execution (admin or guardian)
 - `unpause` — restore normal operation (admin only)
 - `extend_proposal_ttl` — anyone can pay to extend a proposal's storage lifetime
@@ -18,6 +18,7 @@ Soroban smart contract implementing on-chain governance for the Quorum protocol.
 - `create_cosponsored_proposal` — open a proposal that several addresses fund together; their combined live balance must meet `proposal_threshold`
 - `create_conviction_proposal` — open a proposal decided on time-decayed support (see Conviction Voting)
 - `set_proposal_deposit` — set the deposit a proposer locks when opening a proposal (admin only; `0` disables it)
+- `set_proposer_cooldown` — set how many ledgers a proposer waits between proposals (admin only; `0` disables it)
 - `set_proposal_action` — attach the call a proposal makes on execution (proposer only, while voting is open)
 - `allow_target` / `disallow_target` — manage the contracts a proposal action may call (admin only)
 - `is_target_allowed` / `get_cosponsors` / `get_conviction` — reads for the features above
@@ -185,6 +186,27 @@ proposal. The governance contract holds the deposit until the proposal closes:
 - The deposit leaves the proposer's wallet while the proposal is open. Their
   snapshot balance, and so their voting power on that proposal, is reduced by it.
 - The default is `0`, so nothing changes until the admin sets a deposit.
+
+## Proposer Cooldown
+
+`set_proposer_cooldown` sets how many ledgers a proposer must wait after opening
+a proposal before they can open another. It stops one holder from flooding the
+Active list with back-to-back proposals.
+
+- The cooldown is recorded per proposer, from the ledger of their latest proposal.
+  A new proposal is accepted once `current_ledger >= last_ledger + cooldown`.
+- Another proposer is not held back by it.
+- A rejected attempt fails with `ProposerOnCooldown` and creates nothing.
+- The default is `0`, so nothing changes until the admin sets a cooldown. The
+  value is stored as `Config::proposer_cooldown`, which `get_config` returns.
+
+## Cancellation
+
+`cancel` is allowed only while voting is open. The proposer or the admin can
+cancel an `Active` proposal whose `end_ledger` has not passed. Any other proposal
+fails with `ProposalNotCancellable`: one that is already queued, executed,
+failed, expired, vetoed or cancelled, and one whose voting window has closed but
+which has not been finalized yet.
 
 ## Co-sponsored Proposals
 

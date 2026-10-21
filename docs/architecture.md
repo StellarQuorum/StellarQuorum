@@ -77,10 +77,11 @@ Governance depends on three token functions (the `TokenInterface` trait in
   (`TimelockNotExpired` before that). It marks the proposal `Executed`; the
   dispatch of on-chain actions is still a `TODO` in the contract.
 - **cancel** — the proposer or the admin may cancel (`Unauthorized` for anyone
-  else).
+  else), and only while the proposal is `Active` and its voting window is open
+  (`ProposalNotCancellable` otherwise).
 
-`ProposalStatus` also defines `Pending` and `Passed`; the contract does not
-currently assign either.
+`ProposalStatus` stores only the states the contract enters. `Pending` (before
+voting opens) and `Passed` are reported by `get_proposal_phase`, not stored.
 
 ### Sequence Diagram: Happy Path
 

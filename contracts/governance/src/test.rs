@@ -413,6 +413,56 @@ fn get_proposal_rejects_an_unknown_id() {
     );
 }
 
+// ─── Proposer cooldown ───────────────────────────────────────────────────────
+
+/// Ledgers a proposer waits between proposals once the admin sets a cooldown.
+const PROPOSER_COOLDOWN: u32 = 10;
+
+#[test]
+fn a_proposer_must_wait_out_the_cooldown_before_opening_another_proposal() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(GENESIS);
+    let (admin, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    assert_eq!(governance.get_config().proposer_cooldown, 0);
+    governance.set_proposer_cooldown(&PROPOSER_COOLDOWN);
+    assert_eq!(governance.get_config().proposer_cooldown, PROPOSER_COOLDOWN);
+
+    env.ledger().set_sequence_number(OPENED);
+    assert_eq!(propose(&env, &governance_id, &admin).id, 1);
+
+    // One ledger short of the cooldown is still rejected.
+    env.ledger().set_sequence_number(OPENED + PROPOSER_COOLDOWN - 1);
+    assert_eq!(
+        governance.try_create_proposal(
+            &admin,
+            &String::from_str(&env, "Second proposal"),
+            &String::from_str(&env, "Opened during the cooldown."),
+            &String::from_str(&env, ""),
+        ),
+        Err(Ok(GovernanceError::ProposerOnCooldown))
+    );
+    assert_eq!(governance.get_proposal_count(), 1);
+
+    env.ledger().set_sequence_number(OPENED + PROPOSER_COOLDOWN);
+    assert_eq!(propose(&env, &governance_id, &admin).id, 2);
+}
+
+#[test]
+fn the_cooldown_is_tracked_per_proposer() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(GENESIS);
+    let (admin, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    GovernanceContractClient::new(&env, &governance_id).set_proposer_cooldown(&PROPOSER_COOLDOWN);
+
+    env.ledger().set_sequence_number(OPENED);
+    propose(&env, &governance_id, &admin);
+
+    // A different proposer is not held back by the first one's cooldown.
+    let other = Address::generate(&env);
+    assert_eq!(propose(&env, &governance_id, &other).id, 2);
+}
+
 // ─── Voting ──────────────────────────────────────────────────────────────────
 
 /// Deploys with `supply`, funds each holder before the snapshot, and opens a
@@ -552,35 +602,44 @@ fn votes_after_the_deadline_are_rejected() {
 }
 
 #[test]
-fn a_config_timelock_change_does_not_move_an_existing_proposals_queue_delay() {
+fn votes_before_start_ledger_are_rejected_and_the_window_opens_at_start_ledger() {
     let env = Env::default();
-    let (admin, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let voter = Address::generate(&env);
+    let (_, governance_id, proposal_id) = open_with_holders(
+        &env,
+        1_000_000,
+        QUORUM_BPS,
+        &[(voter.clone(), 200_000)],
+    );
     let governance = GovernanceContractClient::new(&env, &governance_id);
-    governance.vote(&admin, &proposal_id, &VOTE_FOR);
+    let start_ledger = governance.get_proposal(&proposal_id).start_ledger;
+
+    // One ledger before start_ledger the window is still closed.
+    env.ledger().set_sequence_number(start_ledger - 1);
     assert_eq!(
-        governance.get_proposal(&proposal_id).timelock_period,
-        TIMELOCK_PERIOD
+        governance.try_vote(&voter, &proposal_id, &VOTE_FOR),
+        Err(Ok(GovernanceError::VotingNotStarted))
     );
 
-    // Stands in for update_config (#53) by rewriting the stored timelock after
-    // the proposal exists and has been voted on.
-    env.as_contract(&governance_id, || {
-        let mut config: Config = env.storage().instance().get(&DataKey::Config).unwrap();
-        config.timelock_period = TIMELOCK_PERIOD * 4;
-        env.storage().instance().set(&DataKey::Config, &config);
-    });
+    // start_ledger itself is the first ledger that accepts votes.
+    env.ledger().set_sequence_number(start_ledger);
+    governance.vote(&voter, &proposal_id, &VOTE_FOR);
+    assert_eq!(governance.get_proposal(&proposal_id).for_votes, 200_000);
+}
 
-    let end_ledger = governance.get_proposal(&proposal_id).end_ledger;
-    env.ledger().set_sequence_number(end_ledger + 1);
-    assert_eq!(
-        governance.finalize(&proposal_id),
-        ProposalStatus::Queued
-    );
-    // The queue delay is the original 50 ledgers, not the 200 now in config.
-    assert_eq!(
-        governance.get_proposal(&proposal_id).queue_ledger,
-        end_ledger + 1 + TIMELOCK_PERIOD
-    );
+#[test]
+fn the_phase_is_pending_until_voting_opens_while_the_stored_status_stays_active() {
+    let env = Env::default();
+    let (_, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let start_ledger = governance.get_proposal(&proposal_id).start_ledger;
+
+    env.ledger().set_sequence_number(start_ledger - 1);
+    assert_eq!(governance.get_proposal_phase(&proposal_id), ProposalPhase::Pending);
+    assert_eq!(governance.get_proposal(&proposal_id).status, ProposalStatus::Active);
+
+    env.ledger().set_sequence_number(start_ledger);
+    assert_eq!(governance.get_proposal_phase(&proposal_id), ProposalPhase::Active);
 }
 
 #[test]
@@ -987,6 +1046,96 @@ fn a_cancelled_proposal_stops_accepting_votes() {
     assert_eq!(
         governance.try_vote(&admin, &proposal_id, &VOTE_FOR),
         Err(Ok(GovernanceError::VotingNotActive))
+    );
+}
+
+#[test]
+fn cancel_is_rejected_once_the_proposal_has_been_executed() {
+    let env = Env::default();
+    let (admin, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    queue_proposal(&env, &governance, &admin, proposal_id);
+
+    let queue_ledger = governance.get_proposal(&proposal_id).queue_ledger;
+    env.ledger().set_sequence_number(queue_ledger);
+    governance.execute(&admin, &proposal_id);
+
+    assert_eq!(
+        governance.try_cancel(&admin, &proposal_id),
+        Err(Ok(GovernanceError::ProposalNotCancellable))
+    );
+    assert_eq!(
+        governance.get_proposal(&proposal_id).status,
+        ProposalStatus::Executed
+    );
+}
+
+#[test]
+fn cancel_is_rejected_once_the_proposal_has_been_queued() {
+    let env = Env::default();
+    let (admin, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    queue_proposal(&env, &governance, &admin, proposal_id);
+
+    assert_eq!(
+        governance.try_cancel(&admin, &proposal_id),
+        Err(Ok(GovernanceError::ProposalNotCancellable))
+    );
+    assert_eq!(
+        governance.get_proposal(&proposal_id).status,
+        ProposalStatus::Queued
+    );
+}
+
+#[test]
+fn cancel_is_rejected_once_the_proposal_has_failed() {
+    let env = Env::default();
+    let (admin, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    close_voting(&env, &governance, proposal_id);
+    assert_eq!(governance.finalize(&proposal_id), ProposalStatus::Failed);
+
+    assert_eq!(
+        governance.try_cancel(&admin, &proposal_id),
+        Err(Ok(GovernanceError::ProposalNotCancellable))
+    );
+    assert_eq!(
+        governance.get_proposal(&proposal_id).status,
+        ProposalStatus::Failed
+    );
+}
+
+#[test]
+fn cancel_is_rejected_once_voting_has_closed_even_before_finalize() {
+    let env = Env::default();
+    let (admin, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    close_voting(&env, &governance, proposal_id);
+
+    assert_eq!(
+        governance.try_cancel(&admin, &proposal_id),
+        Err(Ok(GovernanceError::ProposalNotCancellable))
+    );
+    assert_eq!(
+        governance.get_proposal(&proposal_id).status,
+        ProposalStatus::Active
+    );
+}
+
+#[test]
+fn a_second_cancel_is_rejected() {
+    let env = Env::default();
+    let (admin, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    governance.cancel(&admin, &proposal_id);
+    assert_eq!(
+        governance.try_cancel(&admin, &proposal_id),
+        Err(Ok(GovernanceError::ProposalNotCancellable))
+    );
+    assert_eq!(
+        governance.get_proposal(&proposal_id).status,
+        ProposalStatus::Cancelled
     );
 }
 

@@ -15,6 +15,9 @@ pub trait TokenInterface {
     fn total_supply(env: Env) -> i128;
     fn balance(env: Env, owner: Address) -> i128;
     fn get_past_balance(env: Env, owner: Address, ledger: u32) -> i128;
+    fn get_past_votes(env: Env, owner: Address, ledger: u32) -> i128;
+    fn get_delegates(env: Env, account: Address) -> Address;
+    fn delegate(env: Env, delegator: Address, delegatee: Address);
     fn transfer(env: Env, from: Address, to: Address, amount: i128);
     fn burn(env: Env, from: Address, amount: i128);
 }
@@ -49,6 +52,14 @@ pub enum GovernanceError {
     EmptyVetoReason         = 24,
     VetoReasonTooLong       = 25,
     VetoWindowClosed        = 26,
+    TargetNotAllowed        = 27,
+    InvalidCosponsors       = 28,
+    InvalidAmount           = 29,
+    InsufficientDeposit     = 30,
+    NotExecutable           = 31,
+    ProposalNotCancellable  = 32,
+    ProposerOnCooldown      = 33,
+    VotingNotStarted        = 34,
 }
 
 /// Basis-point denominator: `quorum_bps` of 500 means 5% of total supply.
@@ -228,6 +239,14 @@ pub struct ProposalDepositUpdated {
     pub amount: i128,
 }
 
+/// Emitted when the admin changes how many ledgers a proposer must wait between
+/// opening proposals.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProposerCooldownUpdated {
+    pub ledgers: u32,
+}
+
 /// Emitted when a passed proposal's deposit is returned to its proposer.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -263,10 +282,13 @@ pub struct ProposalActionSet {
     pub function: Symbol,
 }
 
+/// The status stored with each proposal. `Pending` (before voting opens) and
+/// `Passed` are not stored: `get_proposal_phase` derives them from the ledger
+/// window and the proposal kind.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProposalStatus {
-    Pending, Active, Passed, Failed, Queued, Executed, Cancelled, Expired, Vetoed,
+    Active, Failed, Queued, Executed, Cancelled, Expired, Vetoed,
 }
 
 /// Whether a proposal only expresses an opinion or also dispatches actions.
@@ -285,7 +307,7 @@ pub enum ProposalKind {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProposalPhase {
-    Pending, Active, Ended, Queued, ReadyToExecute, Passed, Executed, Failed, Cancelled, Expired,
+    Pending, Active, Ended, Queued, ReadyToExecute, Passed, Executed, Failed, Cancelled, Expired, Vetoed,
 }
 
 /// Running totals over all proposals, maintained as statuses change.
@@ -356,6 +378,7 @@ pub struct Config {
     pub execution_grace_period: u32,
     pub paused: bool,
     pub proposal_deposit: i128,
+    pub proposer_cooldown: u32,
 }
 
 #[contracttype]
@@ -373,6 +396,8 @@ pub enum DataKey {
     Conviction(u64),             // conviction proposal -> ConvictionTally
     ProposalAction(u64),         // proposal -> action dispatched by execute()
     AllowedTarget(Address),      // contract -> true if an action may call it
+    LastProposal(Address),       // proposer -> ledger of their latest proposal
+    Stats,
 }
 
 #[contract]
@@ -403,7 +428,7 @@ impl GovernanceContract {
             return Err(GovernanceError::MinimumTimelockRequired);
         }
         admin.require_auth();
-        let config = Config { token: token.clone(), quorum_bps, voting_period, timelock_period, proposal_threshold, admin: admin.clone(), guardian: guardian.clone(), execution_grace_period, paused: false, proposal_deposit: 0 };
+        let config = Config { token: token.clone(), quorum_bps, voting_period, timelock_period, proposal_threshold, admin: admin.clone(), guardian: guardian.clone(), execution_grace_period, paused: false, proposal_deposit: 0, proposer_cooldown: 0 };
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::ProposalCount, &0u64);
 
@@ -501,7 +526,7 @@ impl GovernanceContract {
         // The snapshot ledger must close before anyone votes. Otherwise a
         // holder could vote, re-delegate within that same ledger, and let the
         // recipient vote the same weight again as its checkpoint changes.
-        if env.ledger().sequence() < proposal.start_ledger { return Err(GovernanceError::VotingNotActive); }
+        if env.ledger().sequence() < proposal.start_ledger { return Err(GovernanceError::VotingNotStarted); }
 
         // Power is read at the proposal's snapshot ledger, not live, so tokens
         // bought or borrowed after the proposal opened carry no weight.
@@ -621,6 +646,7 @@ impl GovernanceContract {
             }
             None => proposal.for_votes > proposal.against_votes,
         };
+        let previous = proposal.status.clone();
         proposal.status = if quorum_ok && majority_for {
             // initialize() accepts any u32 timelock_period; queueing must not
             // wrap the ledger sequence into a trap when it does. The delay is
@@ -889,6 +915,23 @@ impl GovernanceContract {
         Ok(())
     }
 
+    /// Sets how many ledgers a proposer must wait after opening a proposal before
+    /// they may open another. Zero turns the cooldown off. Admin only. The change
+    /// applies to proposals opened after it.
+    pub fn set_proposer_cooldown(env: Env, ledgers: u32) -> Result<(), GovernanceError> {
+        let mut config: Config = Self::require_config(&env)?;
+        config.admin.require_auth();
+        config.proposer_cooldown = ledgers;
+        env.storage().instance().set(&DataKey::Config, &config);
+        Self::touch_instance(&env);
+
+        env.events().publish(
+            (Symbol::new(&env, "proposer_cooldown_updated"),),
+            ProposerCooldownUpdated { ledgers },
+        );
+        Ok(())
+    }
+
     /// Adds `target` to the allowlist of contracts that proposal actions may
     /// call. Admin only.
     pub fn allow_target(env: Env, target: Address) -> Result<(), GovernanceError> {
@@ -948,6 +991,11 @@ impl GovernanceContract {
         Some(Self::decay_to(&stored, env.ledger().sequence()))
     }
 
+    /// Cancels a proposal while its voting window is still open. Only the
+    /// proposer or the admin may cancel, and only an `Active` proposal that has
+    /// not passed its `end_ledger`. Anything else, including a proposal that is
+    /// already executed, queued, failed or cancelled, fails with
+    /// `ProposalNotCancellable`.
     pub fn cancel(env: Env, caller: Address, proposal_id: u64) -> Result<(), GovernanceError> {
         let config: Config = Self::require_config(&env)?;
         caller.require_auth();
@@ -956,7 +1004,9 @@ impl GovernanceContract {
         if caller != proposal.proposer && caller != config.admin {
             return Err(GovernanceError::Unauthorized);
         }
-        let previous = proposal.status.clone();
+        if proposal.status != ProposalStatus::Active || env.ledger().sequence() > proposal.end_ledger {
+            return Err(GovernanceError::ProposalNotCancellable);
+        }
         proposal.status = ProposalStatus::Cancelled;
         env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
         Self::touch_proposal(&env, proposal_id);
@@ -1137,6 +1187,15 @@ impl GovernanceContract {
             return Err(GovernanceError::DescriptionTooLong);
         }
 
+        // A proposer who opened a proposal recently waits `proposer_cooldown`
+        // ledgers before opening another. Zero leaves the check a no-op, since
+        // the ledger sequence never moves backwards.
+        if let Some(last) = env.storage().persistent().get::<DataKey, u32>(&DataKey::LastProposal(proposer.clone())) {
+            if env.ledger().sequence() < last.saturating_add(config.proposer_cooldown) {
+                return Err(GovernanceError::ProposerOnCooldown);
+            }
+        }
+
         let count: u64 = env.storage().instance().get(&DataKey::ProposalCount).unwrap_or(0);
         let id = count + 1;
         let current = env.ledger().sequence();
@@ -1182,6 +1241,7 @@ impl GovernanceContract {
             quorum_required,
             status: ProposalStatus::Active,
             metadata_uri: metadata_uri.clone(),
+            kind: ProposalKind::Executable,
         };
         env.storage().persistent().set(&DataKey::Proposal(id), &proposal);
         env.storage().instance().set(&DataKey::ProposalCount, &id);
@@ -1213,6 +1273,10 @@ impl GovernanceContract {
         let new_count = proposer_count + 1;
         env.storage().persistent().set(&DataKey::ProposerIndex(proposer.clone(), new_count), &id);
         env.storage().persistent().set(&DataKey::ProposerCount(proposer.clone()), &new_count);
+
+        let last_key = DataKey::LastProposal(proposer.clone());
+        env.storage().persistent().set(&last_key, &current);
+        Self::touch_persistent(env, &last_key);
 
         Self::touch_proposal(env, id);
         Self::touch_instance(env);
@@ -1410,7 +1474,6 @@ impl GovernanceContract {
     /// window. Mirrors the checks in `vote()`, `execute()` and `mark_expired()`.
     fn phase_of(proposal: &Proposal, now: u32, execution_grace_period: u32) -> ProposalPhase {
         match &proposal.status {
-            ProposalStatus::Pending => ProposalPhase::Pending,
             ProposalStatus::Active if now < proposal.start_ledger => ProposalPhase::Pending,
             ProposalStatus::Active if now <= proposal.end_ledger => ProposalPhase::Active,
             ProposalStatus::Active => ProposalPhase::Ended,
@@ -1423,11 +1486,11 @@ impl GovernanceContract {
             }
             ProposalStatus::Queued if proposal.kind == ProposalKind::Signaling => ProposalPhase::Passed,
             ProposalStatus::Queued => ProposalPhase::ReadyToExecute,
-            ProposalStatus::Passed => ProposalPhase::Passed,
             ProposalStatus::Executed => ProposalPhase::Executed,
             ProposalStatus::Failed => ProposalPhase::Failed,
             ProposalStatus::Cancelled => ProposalPhase::Cancelled,
             ProposalStatus::Expired => ProposalPhase::Expired,
+            ProposalStatus::Vetoed => ProposalPhase::Vetoed,
         }
     }
 
@@ -1454,9 +1517,8 @@ impl GovernanceContract {
         });
     }
 
-    /// The counter that tracks proposals in `status`. `Pending` and `Passed`
-    /// have none: nothing in the contract enters them, and `Passed` is a
-    /// signaling-only phase that `get_proposal_phase` reports.
+    /// The counter that tracks proposals in `status`. `Vetoed` has none, and
+    /// `Passed` is a phase that `get_proposal_phase` derives rather than a status.
     fn status_counter<'a>(stats: &'a mut GovernanceStats, status: &ProposalStatus) -> Option<&'a mut u64> {
         match status {
             ProposalStatus::Active => Some(&mut stats.active),
@@ -1465,7 +1527,7 @@ impl GovernanceContract {
             ProposalStatus::Failed => Some(&mut stats.failed),
             ProposalStatus::Cancelled => Some(&mut stats.cancelled),
             ProposalStatus::Expired => Some(&mut stats.expired),
-            ProposalStatus::Pending | ProposalStatus::Passed => None,
+            ProposalStatus::Vetoed => None,
         }
     }
 }
