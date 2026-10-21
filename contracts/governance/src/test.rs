@@ -3697,8 +3697,8 @@ fn allowlist_changes_emit_an_event() {
     let (_, data) = last_governance_event(&env, &governance_id);
     let admin = governance.get_config().admin;
     assert_eq!(
-        data,
-        TargetAllowlistUpdated { admin, target: token_id.clone(), allowed: true }.into_val(&env)
+        TargetAllowlistUpdated::try_from_val(&env, &data).unwrap(),
+        TargetAllowlistUpdated { admin, target: token_id.clone(), allowed: true }
     );
 }
 

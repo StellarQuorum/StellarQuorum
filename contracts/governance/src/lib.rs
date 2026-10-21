@@ -464,42 +464,11 @@ impl GovernanceContract {
         Self::open_proposal(&env, proposer, &cosponsors, title, description, metadata_uri, false)
     }
 
-        let quorum_required =
-            Self::quorum_for_supply(token.total_supply(), config.quorum_bps)?;
-        // Checked: initialize() accepts any u32 voting_period, so a period
-        // near u32::MAX would wrap the window and trap here. A trap would be
-        // unrecoverable; Overflow lets proposal creation fail cleanly instead.
-        let start_ledger = current
-            .checked_add(1)
-            .ok_or(GovernanceError::Overflow)?;
-        let end_ledger = start_ledger
-            .checked_add(config.voting_period)
-            .ok_or(GovernanceError::Overflow)?;
-        let proposal = Proposal {
-            id, proposer: proposer.clone(), title, description,
-            for_votes: 0, against_votes: 0, abstain_votes: 0,
-            snapshot_ledger: current,
-            start_ledger,
-            end_ledger,
-            queue_ledger: 0,
-            quorum_required,
-            timelock_period: config.timelock_period,
-            status: ProposalStatus::Active,
-            metadata_uri: metadata_uri.clone(),
-        };
-        env.storage().persistent().set(&DataKey::Proposal(id), &proposal);
-        env.storage().instance().set(&DataKey::ProposalCount, &id);
-        
-        // Index proposal by proposer
-        let proposer_count: u64 = env.storage().persistent()
-            .get(&DataKey::ProposerCount(proposer.clone()))
-            .unwrap_or(0);
-        let new_count = proposer_count + 1;
-        env.storage().persistent().set(&DataKey::ProposerIndex(proposer.clone(), new_count), &id);
-        env.storage().persistent().set(&DataKey::ProposerCount(proposer.clone()), &new_count);
-        
-        Self::touch_proposal(&env, id);
-        Self::touch_instance(&env);
+    /// As `create_proposal`, but `cosponsors` authorize the same transaction and
+    /// their live balances count toward the proposal threshold. See the README.
+    pub fn create_cosponsored_proposal(env: Env, proposer: Address, cosponsors: soroban_sdk::Vec<Address>, title: String, description: String, metadata_uri: String) -> Result<u64, GovernanceError> {
+        Self::open_proposal(&env, proposer, &cosponsors, title, description, metadata_uri, false)
+    }
 
     /// As `create_proposal`, but the proposal is decided on time-decayed support
     /// rather than on the raw For and Against totals. See the README for the
@@ -636,6 +605,7 @@ impl GovernanceContract {
     }
 
     pub fn finalize(env: Env, proposal_id: u64) -> Result<ProposalStatus, GovernanceError> {
+        let config: Config = Self::require_config(&env)?;
         let mut proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
         if env.ledger().sequence() <= proposal.end_ledger { return Err(GovernanceError::VotingNotActive); }
@@ -1266,6 +1236,7 @@ impl GovernanceContract {
             end_ledger,
             queue_ledger: 0,
             quorum_required,
+            timelock_period: config.timelock_period,
             status: ProposalStatus::Active,
             metadata_uri: metadata_uri.clone(),
             kind: ProposalKind::Executable,
