@@ -7,7 +7,6 @@ Soroban smart contract implementing on-chain governance for the Quorum protocol.
 - `upgrade` — replace the contract WASM bytecode (admin only; see [Contract Upgrades](#contract-upgrades))
 - `initialize` — set config, quorum params, token address, guardian, and execution grace period
 - `create_proposal` — create a new proposal (requires live token balance >= `proposal_threshold`)
-- `create_proposal_with_kind` — as `create_proposal`, choosing `Signaling` (never executed) or `Executable`
 - `vote` — cast For/Against/Abstain vote on active proposal
 - `finalize` — evaluate quorum after voting period ends
 - `execute` — execute queued proposal after timelock (must be within grace period if configured)
@@ -20,9 +19,368 @@ Soroban smart contract implementing on-chain governance for the Quorum protocol.
 - `create_conviction_proposal` — open a proposal decided on time-decayed support (see Conviction Voting)
 - `set_proposal_deposit` — set the deposit a proposer locks when opening a proposal (admin only; `0` disables it)
 - `set_proposer_cooldown` — set how many ledgers a proposer waits between proposals (admin only; `0` disables it)
-- `set_proposal_action` — attach the call a proposal makes on execution (proposer only, while voting is open)
+- `set_proposal_action` — append a call (with arguments) the proposal makes on execution; up to 10 per proposal (proposer only, while voting is open)
+- `get_proposal_actions` — the calls a proposal makes on execution, in order
+- `veto` — block a queued proposal during the timelock (guardian only)
+- `set_guardian` — replace the guardian (admin only)
 - `allow_target` / `disallow_target` — manage the contracts a proposal action may call (admin only)
 - `is_target_allowed` / `get_cosponsors` / `get_conviction` — reads for the features above
+
+The core functions are documented in full under [Function Reference](#function-reference).
+
+## Function Reference
+
+Conventions used below:
+
+- Ledger counts assume ~5 seconds per ledger, so `17_280` ledgers is about one day.
+- `support` is `0` = Against, `1` = For, `2` = Abstain.
+- Errors are `GovernanceError` variants; the number is the on-chain error code
+  (`Error(Contract, #n)`). See [Error codes](#error-codes).
+- CLI examples use the [Stellar CLI](https://developers.stellar.org/docs/tools/cli)
+  with `$GOV_ID` set to the governance contract address. Argument names match
+  the Rust parameter names.
+
+### `initialize`
+
+```rust
+fn initialize(env, admin: Address, guardian: Address, token: Address, quorum_bps: u32,
+              voting_period: u32, timelock_period: u32, execution_grace_period: u32,
+              proposal_threshold: i128) -> Result<(), GovernanceError>
+```
+
+**Purpose:** one-time setup after deployment. Stores the config and sets the proposal count to `0`.
+
+| Parameter | Type | Valid range / meaning |
+| --- | --- | --- |
+| `admin` | `Address` | Admin account. Must authorize the call. |
+| `guardian` | `Address` | Account allowed to `veto` queued proposals and to `pause`. |
+| `token` | `Address` | QUORUM token contract used for balances, snapshots and deposits. |
+| `quorum_bps` | `u32` | `1`–`10000`. Share of total supply that must vote, in basis points (`500` = 5%). |
+| `voting_period` | `u32` | Voting window length in ledgers. |
+| `timelock_period` | `u32` | `>= 1`. Ledgers between passing and earliest execution. |
+| `execution_grace_period` | `u32` | Ledgers after the timelock in which `execute` is allowed. `0` = no deadline. |
+| `proposal_threshold` | `i128` | Minimum live balance needed to open a proposal. |
+
+**Returns:** `()`.
+
+**Errors:** `AlreadyInitialized` (1), `InvalidQuorumBps` (17) if `quorum_bps > 10000`,
+`MinimumQuorumRequired` (22) if `quorum_bps == 0`, `MinimumTimelockRequired` (23) if `timelock_period == 0`.
+
+**Events:** `("contract_initialized")` → `ContractInitialized { admin, guardian, token, quorum_bps, voting_period, timelock_period, execution_grace_period, proposal_threshold }`.
+
+```bash
+stellar contract invoke --id $GOV_ID --source admin --network testnet -- \
+  initialize \
+  --admin $(stellar keys address admin) \
+  --guardian $(stellar keys address guardian) \
+  --token $TOKEN_ID \
+  --quorum_bps 500 \
+  --voting_period 120960 \
+  --timelock_period 34560 \
+  --execution_grace_period 120960 \
+  --proposal_threshold 1000000000
+```
+
+### `create_proposal`
+
+```rust
+fn create_proposal(env, proposer: Address, title: String, description: String,
+                   metadata_uri: String) -> Result<u64, GovernanceError>
+```
+
+**Purpose:** open a new proposal. Voting starts on the next ledger and lasts `voting_period` ledgers.
+Voting power is read at the current ledger (the snapshot), and `quorum_required` is fixed from the
+total supply at creation.
+
+| Parameter | Type | Valid range / meaning |
+| --- | --- | --- |
+| `proposer` | `Address` | Must authorize. Live balance must be `>= proposal_threshold` and `>= proposal_deposit`. |
+| `title` | `String` | 1–200 bytes. |
+| `description` | `String` | 0–10,000 bytes. |
+| `metadata_uri` | `String` | Link to off-chain discussion. `""` if none. |
+
+**Returns:** `u64`, the new proposal id (ids start at `1`).
+
+**Errors:** `NotInitialized` (18), `ContractPaused` (16), `EmptyTitle` (19), `TitleTooLong` (20),
+`DescriptionTooLong` (21), `ProposerOnCooldown` (33), `BelowProposalThreshold` (9),
+`InsufficientDeposit` (30), `Overflow` (13).
+
+**Events:** `("proposal_created", id)` → `ProposalCreated { id, proposer, title, start_ledger, end_ledger, quorum_required, metadata_uri }`.
+If `proposal_deposit > 0`, the deposit is transferred from the proposer to the contract.
+
+```bash
+stellar contract invoke --id $GOV_ID --source proposer --network testnet -- \
+  create_proposal \
+  --proposer $(stellar keys address proposer) \
+  --title "Raise the protocol fee to 0.05%" \
+  --description "Moves the swap fee from 3 to 5 bps." \
+  --metadata_uri "https://forum.example/t/fee-change"
+```
+
+### `vote`
+
+```rust
+fn vote(env, voter: Address, proposal_id: u64, support: u32) -> Result<(), GovernanceError>
+```
+
+**Purpose:** cast or change a vote while voting is open. Weight is the voter's delegated voting power
+at the proposal's snapshot ledger. Voting again during the window moves the voter's weight to the new choice.
+
+| Parameter | Type | Valid range / meaning |
+| --- | --- | --- |
+| `voter` | `Address` | Must authorize. |
+| `proposal_id` | `u64` | An existing proposal. |
+| `support` | `u32` | `0` Against, `1` For, `2` Abstain. |
+
+**Returns:** `()`.
+
+**Errors:** `NotInitialized` (18), `InvalidVoteChoice` (10), `ProposalNotFound` (3),
+`VotingPeriodEnded` (11) after the window (`AlreadyVoted` (5) if this voter had voted),
+`VotingNotActive` (4) if the proposal is no longer `Active`, `VotingNotStarted` (34) before `start_ledger`,
+`NoVotingPower` (14), `Overflow` (13).
+
+**Events:** `("vote_cast", proposal_id, voter)` → `VoteCast { proposal_id, voter, support, voting_power }`.
+
+```bash
+stellar contract invoke --id $GOV_ID --source voter --network testnet -- \
+  vote --voter $(stellar keys address voter) --proposal_id 1 --support 1
+```
+
+### `finalize`
+
+```rust
+fn finalize(env, proposal_id: u64) -> Result<ProposalStatus, GovernanceError>
+```
+
+**Purpose:** decide an `Active` proposal once voting has closed. Anyone may call it. The proposal passes
+when total votes (For + Against + Abstain) reach `quorum_required` and For exceeds Against; conviction
+proposals compare their decayed support instead. A passing proposal becomes `Queued` with
+`queue_ledger = now + timelock_period`; otherwise it becomes `Failed`.
+
+| Parameter | Type | Valid range / meaning |
+| --- | --- | --- |
+| `proposal_id` | `u64` | An `Active` proposal whose `end_ledger` has passed. |
+
+**Returns:** the new `ProposalStatus`, `Queued` or `Failed`.
+
+**Errors:** `NotInitialized` (18), `ProposalNotFound` (3), `VotingNotActive` (4) while voting is still
+open or if the proposal was already decided (queued, failed, cancelled, vetoed or executed), `Overflow` (13).
+
+**Events:** `("proposal_finalized", id)` → `ProposalFinalized { id, status, for_votes, against_votes, abstain_votes }`.
+On a pass, also `("proposal_queued", id)` → `ProposalQueued { id, queue_ledger }`.
+With a deposit, `deposit_refunded` on a pass or `deposit_forfeited` on a fail.
+
+```bash
+stellar contract invoke --id $GOV_ID --source anyone --network testnet -- \
+  finalize --proposal_id 1
+```
+
+### `execute`
+
+```rust
+fn execute(env, executor: Address, proposal_id: u64) -> Result<(), GovernanceError>
+```
+
+**Purpose:** run a `Queued` proposal after its timelock. Anyone may execute. The proposal is marked
+`Executed` first, then each action from `set_proposal_action` is called in order. If any action fails,
+the whole call is rolled back and the proposal stays `Queued`.
+
+| Parameter | Type | Valid range / meaning |
+| --- | --- | --- |
+| `executor` | `Address` | Must authorize. Recorded in the event. |
+| `proposal_id` | `u64` | A `Queued` proposal with `queue_ledger <= now`. |
+
+**Returns:** `()`.
+
+**Errors:** `ContractPaused` (16), `ProposalNotFound` (3), `ProposalNotPassed` (7) if not `Queued`
+(including `Vetoed` and already `Executed`), `NotExecutable` (31) for a signaling proposal,
+`TimelockNotExpired` (12), `ExecutionExpired` (15) after `queue_ledger + execution_grace_period`,
+`TargetNotAllowed` (27) if an action's target was removed from the allowlist, `ActionFailed` (36) if an action call fails.
+
+**Events:** `("proposal_executed", id)` → `ProposalExecuted { id, executor }`, plus whatever the called contracts emit.
+
+```bash
+stellar contract invoke --id $GOV_ID --source anyone --network testnet -- \
+  execute --executor $(stellar keys address anyone) --proposal_id 1
+```
+
+### `cancel`
+
+```rust
+fn cancel(env, caller: Address, proposal_id: u64) -> Result<(), GovernanceError>
+```
+
+**Purpose:** withdraw a proposal while voting is still open. Any deposit is forfeited.
+
+| Parameter | Type | Valid range / meaning |
+| --- | --- | --- |
+| `caller` | `Address` | The proposer or the admin. Must authorize. |
+| `proposal_id` | `u64` | An `Active` proposal whose `end_ledger` has not passed. |
+
+**Returns:** `()`.
+
+**Errors:** `NotInitialized` (18), `ProposalNotFound` (3), `Unauthorized` (2), `ProposalNotCancellable` (32).
+
+**Events:** `("proposal_cancelled", id)` → `ProposalCancelled { id, caller }`; `deposit_forfeited` if a deposit was held.
+
+```bash
+stellar contract invoke --id $GOV_ID --source proposer --network testnet -- \
+  cancel --caller $(stellar keys address proposer) --proposal_id 1
+```
+
+### `get_proposal`
+
+```rust
+fn get_proposal(env, id: u64) -> Result<Proposal, GovernanceError>
+```
+
+**Purpose:** read one proposal. Also extends its storage TTL.
+
+**Returns:** `Proposal { id, proposer, title, description, for_votes, against_votes, abstain_votes,
+snapshot_ledger, start_ledger, end_ledger, queue_ledger, quorum_required, timelock_period, status, metadata_uri, kind }`.
+`queue_ledger` is `0` until the proposal is queued.
+
+**Errors:** `ProposalNotFound` (3).
+
+**Events:** none.
+
+```bash
+stellar contract invoke --id $GOV_ID --source anyone --network testnet --send=no -- \
+  get_proposal --id 1
+```
+
+### `get_config`
+
+```rust
+fn get_config(env) -> Config
+```
+
+**Purpose:** read the current configuration.
+
+**Returns:** `Config { token, quorum_bps, voting_period, timelock_period, proposal_threshold, admin,
+guardian, execution_grace_period, paused, proposal_deposit, proposer_cooldown }`.
+
+**Errors:** none returned. The call traps if the contract is not initialized.
+
+**Events:** none.
+
+```bash
+stellar contract invoke --id $GOV_ID --source anyone --network testnet --send=no -- get_config
+```
+
+### `has_voted`
+
+```rust
+fn has_voted(env, proposal_id: u64, voter: Address) -> bool
+```
+
+**Purpose:** whether `voter` has a vote recorded on `proposal_id`. Use `get_vote` to read the choice.
+
+**Returns:** `true` if a vote is recorded. `false` for an unknown proposal or a non-voter.
+
+**Errors:** none. **Events:** none.
+
+```bash
+stellar contract invoke --id $GOV_ID --source anyone --network testnet --send=no -- \
+  has_voted --proposal_id 1 --voter $(stellar keys address voter)
+```
+
+### `get_proposal_count`
+
+```rust
+fn get_proposal_count(env) -> u64
+```
+
+**Purpose:** number of proposals created so far, which is also the highest proposal id.
+
+**Returns:** `u64`. `0` before the first proposal.
+
+**Errors:** none. **Events:** none.
+
+```bash
+stellar contract invoke --id $GOV_ID --source anyone --network testnet --send=no -- get_proposal_count
+```
+
+### `set_proposal_action`
+
+```rust
+fn set_proposal_action(env, proposer: Address, proposal_id: u64, target: Address,
+                       function: Symbol, args: Vec<Val>) -> Result<(), GovernanceError>
+```
+
+**Purpose:** append one call for `execute` to make. Call it once per action, up to 10 per proposal;
+actions run in the order they were added. A proposal with no actions executes without calling anything.
+
+| Parameter | Type | Valid range / meaning |
+| --- | --- | --- |
+| `proposer` | `Address` | The proposal's proposer. Must authorize. |
+| `proposal_id` | `u64` | An `Active` proposal whose voting window is open. |
+| `target` | `Address` | A contract on the allowlist (`allow_target`). |
+| `function` | `Symbol` | Function to call on `target`. |
+| `args` | `Vec<Val>` | Arguments, in order. Each element is an `ScVal`. Use `[]` for none. |
+
+**Returns:** `()`.
+
+**Errors:** `ProposalNotFound` (3), `Unauthorized` (2), `VotingPeriodEnded` (11), `VotingNotActive` (4),
+`TargetNotAllowed` (27), `TooManyActions` (35).
+
+**Events:** `("proposal_action_set", id)` → `ProposalActionSet { id, target, function }`.
+
+```ts
+import { Address, nativeToScVal } from "@stellar/stellar-sdk";
+// args for upgrade(caller: Address, new_wasm_hash: BytesN<32>)
+const args = [new Address(GOV_ID).toScVal(), nativeToScVal(Buffer.from(wasmHash, "hex"))];
+```
+
+### `veto`
+
+```rust
+fn veto(env, caller: Address, proposal_id: u64, reason: String) -> Result<(), GovernanceError>
+```
+
+**Purpose:** guardian safety net. Moves a `Queued` proposal to `Vetoed` before its timelock ends.
+A vetoed proposal can never be executed or finalized again.
+
+**Errors:** `NotInitialized` (18), `Unauthorized` (2) if `caller` is not the guardian, `EmptyVetoReason` (24),
+`VetoReasonTooLong` (25) above 1,000 bytes, `ProposalNotFound` (3), `ProposalNotPassed` (7) if not `Queued`,
+`VetoWindowClosed` (26) once `queue_ledger` is reached.
+
+**Events:** `("proposal_vetoed", id)` → `ProposalVetoed { id, guardian, reason }`.
+
+### `set_guardian`
+
+```rust
+fn set_guardian(env, new_guardian: Address) -> Result<(), GovernanceError>
+```
+
+**Purpose:** replace the guardian, for example after a guardian key is compromised. Admin only; takes effect immediately.
+
+**Errors:** `NotInitialized` (18). The call traps without the admin's authorization.
+
+**Events:** `("guardian_changed")` → `GuardianChanged { previous_guardian, new_guardian }`.
+
+### Error codes
+
+| Code | Variant | Code | Variant |
+| ---: | --- | ---: | --- |
+| 1 | `AlreadyInitialized` | 19 | `EmptyTitle` |
+| 2 | `Unauthorized` | 20 | `TitleTooLong` |
+| 3 | `ProposalNotFound` | 21 | `DescriptionTooLong` |
+| 4 | `VotingNotActive` | 22 | `MinimumQuorumRequired` |
+| 5 | `AlreadyVoted` | 23 | `MinimumTimelockRequired` |
+| 6 | `QuorumNotReached` | 24 | `EmptyVetoReason` |
+| 7 | `ProposalNotPassed` | 25 | `VetoReasonTooLong` |
+| 8 | `AlreadyExecuted` | 26 | `VetoWindowClosed` |
+| 9 | `BelowProposalThreshold` | 27 | `TargetNotAllowed` |
+| 10 | `InvalidVoteChoice` | 28 | `InvalidCosponsors` |
+| 11 | `VotingPeriodEnded` | 29 | `InvalidAmount` |
+| 12 | `TimelockNotExpired` | 30 | `InsufficientDeposit` |
+| 13 | `Overflow` | 31 | `NotExecutable` |
+| 14 | `NoVotingPower` | 32 | `ProposalNotCancellable` |
+| 15 | `ExecutionExpired` | 33 | `ProposerOnCooldown` |
+| 16 | `ContractPaused` | 34 | `VotingNotStarted` |
+| 17 | `InvalidQuorumBps` | 35 | `TooManyActions` |
+| 18 | `NotInitialized` | 36 | `ActionFailed` |
 
 ## Emergency Pause
 
@@ -254,17 +612,19 @@ fails. The conviction design is summarized in
 
 ## Execution Allowlist
 
-A proposal can carry one on-chain call, made when it executes. The call takes
-no arguments, and a proposal carries at most one.
+A proposal can carry up to 10 on-chain calls, made in order when it executes.
+Each call has a target, a function name and a list of arguments.
 
 - Only the admin can add or remove targets with `allow_target` and
   `disallow_target`. Each change emits `target_allowlist_updated`.
-- The proposer attaches the call with `set_proposal_action(proposal_id, target,
-  function)`. This works only while voting is open, and only for a target that is
-  on the allowlist.
+- The proposer adds each call with `set_proposal_action(proposal_id, target,
+  function, args)`. This works only while voting is open, and only for a target
+  that is on the allowlist.
 - `execute()` checks the target against the allowlist again, before it commits
   `Executed`. If the target was removed after the action was attached, `execute()`
   fails with `TargetNotAllowed` and the proposal stays `Queued`.
+- If any call fails, `execute()` returns `ActionFailed` and the whole execution
+  is rolled back: the proposal stays `Queued` and no earlier call's effects are kept.
 
 ## Resource baseline
 

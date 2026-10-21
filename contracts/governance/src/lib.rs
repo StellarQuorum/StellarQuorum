@@ -60,6 +60,8 @@ pub enum GovernanceError {
     ProposalNotCancellable  = 32,
     ProposerOnCooldown      = 33,
     VotingNotStarted        = 34,
+    TooManyActions          = 35,
+    ActionFailed            = 36,
 }
 
 /// Basis-point denominator: `quorum_bps` of 500 means 5% of total supply.
@@ -99,6 +101,10 @@ const MAX_DESCRIPTION_LENGTH: u32 = 10_000;
 /// Maximum length for a guardian veto justification in bytes.
 /// Long enough for a short rationale plus a link to a full write-up.
 const MAX_VETO_REASON_LENGTH: u32 = 1_000;
+
+/// Maximum number of actions one proposal may carry. Bounds the work and
+/// resources `execute()` spends dispatching them.
+const MAX_PROPOSAL_ACTIONS: u32 = 10;
 
 /// Ledgers in roughly one day, at Stellar's ~5 second close time.
 const LEDGERS_PER_DAY: u32 = 17_280;
@@ -232,6 +238,14 @@ pub struct AdminTransferred {
     pub new_admin: Address,
 }
 
+/// Emitted when the admin replaces the guardian allowed to veto queued proposals.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GuardianChanged {
+    pub previous_guardian: Address,
+    pub new_guardian: Address,
+}
+
 /// Emitted when the admin changes the deposit required to open a proposal.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -354,12 +368,13 @@ pub struct Proposal {
     pub kind: ProposalKind,
 }
 
-/// The single call a proposal makes when it executes. It takes no arguments.
+/// One call a proposal makes when it executes: `function` on `target` with `args`.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProposalAction {
     pub target: Address,
     pub function: Symbol,
+    pub args: soroban_sdk::Vec<Val>,
 }
 
 /// Time-decayed support for a conviction proposal, in vote-weight units.
@@ -401,7 +416,7 @@ pub enum DataKey {
     Deposit(u64),                // proposal -> deposit held by the contract
     CoSponsors(u64),             // proposal -> co-sponsor addresses
     Conviction(u64),             // conviction proposal -> ConvictionTally
-    ProposalAction(u64),         // proposal -> action dispatched by execute()
+    ProposalAction(u64),         // proposal -> actions dispatched by execute(), in order
     AllowedTarget(Address),      // contract -> true if an action may call it
     LastProposal(Address),       // proposer -> ledger of their latest proposal
     Stats,
@@ -464,42 +479,11 @@ impl GovernanceContract {
         Self::open_proposal(&env, proposer, &cosponsors, title, description, metadata_uri, false)
     }
 
-        let quorum_required =
-            Self::quorum_for_supply(token.total_supply(), config.quorum_bps)?;
-        // Checked: initialize() accepts any u32 voting_period, so a period
-        // near u32::MAX would wrap the window and trap here. A trap would be
-        // unrecoverable; Overflow lets proposal creation fail cleanly instead.
-        let start_ledger = current
-            .checked_add(1)
-            .ok_or(GovernanceError::Overflow)?;
-        let end_ledger = start_ledger
-            .checked_add(config.voting_period)
-            .ok_or(GovernanceError::Overflow)?;
-        let proposal = Proposal {
-            id, proposer: proposer.clone(), title, description,
-            for_votes: 0, against_votes: 0, abstain_votes: 0,
-            snapshot_ledger: current,
-            start_ledger,
-            end_ledger,
-            queue_ledger: 0,
-            quorum_required,
-            timelock_period: config.timelock_period,
-            status: ProposalStatus::Active,
-            metadata_uri: metadata_uri.clone(),
-        };
-        env.storage().persistent().set(&DataKey::Proposal(id), &proposal);
-        env.storage().instance().set(&DataKey::ProposalCount, &id);
-        
-        // Index proposal by proposer
-        let proposer_count: u64 = env.storage().persistent()
-            .get(&DataKey::ProposerCount(proposer.clone()))
-            .unwrap_or(0);
-        let new_count = proposer_count + 1;
-        env.storage().persistent().set(&DataKey::ProposerIndex(proposer.clone(), new_count), &id);
-        env.storage().persistent().set(&DataKey::ProposerCount(proposer.clone()), &new_count);
-        
-        Self::touch_proposal(&env, id);
-        Self::touch_instance(&env);
+    /// As `create_proposal`, but `cosponsors` authorize the same transaction and
+    /// their live balances count toward the proposal threshold. See the README.
+    pub fn create_cosponsored_proposal(env: Env, proposer: Address, cosponsors: soroban_sdk::Vec<Address>, title: String, description: String, metadata_uri: String) -> Result<u64, GovernanceError> {
+        Self::open_proposal(&env, proposer, &cosponsors, title, description, metadata_uri, false)
+    }
 
     /// As `create_proposal`, but the proposal is decided on time-decayed support
     /// rather than on the raw For and Against totals. See the README for the
@@ -636,9 +620,13 @@ impl GovernanceContract {
     }
 
     pub fn finalize(env: Env, proposal_id: u64) -> Result<ProposalStatus, GovernanceError> {
+        let config: Config = Self::require_config(&env)?;
         let mut proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
         if env.ledger().sequence() <= proposal.end_ledger { return Err(GovernanceError::VotingNotActive); }
+        // Only an open proposal can be decided. Without this, finalize() could
+        // re-tally a Vetoed, Cancelled or Executed proposal back into Queued.
+        if proposal.status != ProposalStatus::Active { return Err(GovernanceError::VotingNotActive); }
         // Checked, for the same reason as add_weight: honest tallies cannot
         // exceed the supply, but nothing enforces that, and a trap here would
         // be unrecoverable rather than an error a caller can handle.
@@ -720,11 +708,13 @@ impl GovernanceContract {
             return Err(GovernanceError::ExecutionExpired);
         }
 
-        // Re-check the allowlist now, since it may have changed since the action
-        // was attached. Checked before Executed is committed, so a rejected call
+        // Re-check the allowlist now, since it may have changed since the actions
+        // were attached. Checked before Executed is committed, so a rejected call
         // leaves the proposal Queued.
-        let action: Option<ProposalAction> = env.storage().persistent().get(&DataKey::ProposalAction(proposal_id));
-        if let Some(action) = &action {
+        let actions: soroban_sdk::Vec<ProposalAction> = env.storage().persistent()
+            .get(&DataKey::ProposalAction(proposal_id))
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+        for action in actions.iter() {
             if !Self::target_allowed(&env, &action.target) {
                 return Err(GovernanceError::TargetNotAllowed);
             }
@@ -737,8 +727,14 @@ impl GovernanceContract {
         env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
         Self::touch_proposal(&env, proposal_id);
 
-        if let Some(action) = action {
-            let _: Val = env.invoke_contract(&action.target, &action.function, soroban_sdk::Vec::new(&env));
+        // A failing action returns an error instead of trapping. Returning Err
+        // rolls back this whole invocation, so the proposal stays Queued and
+        // no earlier action's effects are kept.
+        for action in actions.iter() {
+            let result = env.try_invoke_contract::<Val, soroban_sdk::Error>(&action.target, &action.function, action.args.clone());
+            if !matches!(result, Ok(Ok(_))) {
+                return Err(GovernanceError::ActionFailed);
+            }
         }
 
         env.events().publish(
@@ -939,6 +935,23 @@ impl GovernanceContract {
         Ok(())
     }
 
+    /// Replaces the guardian that may veto queued proposals. Admin only. Takes
+    /// effect at once, so a compromised guardian can be rotated out mid-timelock.
+    pub fn set_guardian(env: Env, new_guardian: Address) -> Result<(), GovernanceError> {
+        let mut config: Config = Self::require_config(&env)?;
+        config.admin.require_auth();
+        let previous_guardian = config.guardian.clone();
+        config.guardian = new_guardian.clone();
+        env.storage().instance().set(&DataKey::Config, &config);
+        Self::touch_instance(&env);
+
+        env.events().publish(
+            (Symbol::new(&env, "guardian_changed"),),
+            GuardianChanged { previous_guardian, new_guardian },
+        );
+        Ok(())
+    }
+
     /// Adds `target` to the allowlist of contracts that proposal actions may
     /// call. Admin only.
     pub fn allow_target(env: Env, target: Address) -> Result<(), GovernanceError> {
@@ -955,10 +968,20 @@ impl GovernanceContract {
         Self::target_allowed(&env, &target)
     }
 
-    /// Attaches the call a proposal makes when it executes. Only the proposer may
-    /// set it, and only while voting is open. The target must be allowlisted now,
-    /// and `execute()` checks it again.
-    pub fn set_proposal_action(env: Env, proposer: Address, proposal_id: u64, target: Address, function: Symbol) -> Result<(), GovernanceError> {
+    /// The actions `proposal_id` dispatches on execution, in order. Empty if none were attached.
+    pub fn get_proposal_actions(env: Env, proposal_id: u64) -> soroban_sdk::Vec<ProposalAction> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ProposalAction(proposal_id))
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env))
+    }
+
+    /// Appends a call the proposal makes when it executes. Calling it again adds
+    /// another action, up to `MAX_PROPOSAL_ACTIONS`; `execute()` runs them in the
+    /// order they were added. Only the proposer may add actions, and only while
+    /// voting is open. The target must be allowlisted now, and `execute()` checks
+    /// it again.
+    pub fn set_proposal_action(env: Env, proposer: Address, proposal_id: u64, target: Address, function: Symbol, args: soroban_sdk::Vec<Val>) -> Result<(), GovernanceError> {
         proposer.require_auth();
         let proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
@@ -971,9 +994,15 @@ impl GovernanceContract {
             return Err(GovernanceError::TargetNotAllowed);
         }
 
-        let action = ProposalAction { target: target.clone(), function: function.clone() };
         let key = DataKey::ProposalAction(proposal_id);
-        env.storage().persistent().set(&key, &action);
+        let mut actions: soroban_sdk::Vec<ProposalAction> = env.storage().persistent()
+            .get(&key)
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+        if actions.len() >= MAX_PROPOSAL_ACTIONS {
+            return Err(GovernanceError::TooManyActions);
+        }
+        actions.push_back(ProposalAction { target: target.clone(), function: function.clone(), args });
+        env.storage().persistent().set(&key, &actions);
         Self::touch_persistent(&env, &key);
 
         env.events().publish(
@@ -1200,7 +1229,7 @@ impl GovernanceContract {
         }
 
         // Validate title: reject empty titles
-        if title.len() == 0 {
+        if title.is_empty() {
             return Err(GovernanceError::EmptyTitle);
         }
 
@@ -1266,6 +1295,7 @@ impl GovernanceContract {
             end_ledger,
             queue_ledger: 0,
             quorum_required,
+            timelock_period: config.timelock_period,
             status: ProposalStatus::Active,
             metadata_uri: metadata_uri.clone(),
             kind: ProposalKind::Executable,
@@ -1287,7 +1317,7 @@ impl GovernanceContract {
             );
             Self::touch_persistent(env, &conviction_key);
         }
-        if cosponsors.len() > 0 {
+        if !cosponsors.is_empty() {
             let cosponsors_key = DataKey::CoSponsors(id);
             env.storage().persistent().set(&cosponsors_key, cosponsors);
             Self::touch_persistent(env, &cosponsors_key);

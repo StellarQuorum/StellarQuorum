@@ -22,6 +22,32 @@ impl ReentrantCallback {
     }
 }
 
+// A proposal action target that records the arguments it was called with, or
+// fails on demand, so tests can see exactly what execute() dispatched.
+#[contract]
+struct ActionRecorder;
+
+#[contractimpl]
+impl ActionRecorder {
+    pub fn record(env: Env, value: u32) {
+        let mut calls: soroban_sdk::Vec<u32> = env.storage().instance()
+            .get(&Symbol::new(&env, "calls"))
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+        calls.push_back(value);
+        env.storage().instance().set(&Symbol::new(&env, "calls"), &calls);
+    }
+
+    pub fn calls(env: Env) -> soroban_sdk::Vec<u32> {
+        env.storage().instance()
+            .get(&Symbol::new(&env, "calls"))
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&env))
+    }
+
+    pub fn fail(_env: Env) {
+        panic!("action failed");
+    }
+}
+
 const QUORUM_BPS: u32 = 500; // 5%
 const VOTING_PERIOD: u32 = 100;
 const TIMELOCK_PERIOD: u32 = 50;
@@ -3618,7 +3644,7 @@ fn an_allowlisted_action_is_dispatched_when_the_proposal_executes() {
     let (admin, token_id, governance_id, id) = open_with_action_target(&env);
     let governance = GovernanceContractClient::new(&env, &governance_id);
     governance.allow_target(&token_id);
-    governance.set_proposal_action(&admin, &id, &token_id, &Symbol::new(&env, "name"));
+    governance.set_proposal_action(&admin, &id, &token_id, &Symbol::new(&env, "name"), &soroban_sdk::Vec::new(&env));
     queue_proposal(&env, &governance, &admin, id);
 
     let queue_ledger = governance.get_proposal(&id).queue_ledger;
@@ -3634,7 +3660,7 @@ fn a_target_removed_from_the_allowlist_blocks_execution() {
     let (admin, token_id, governance_id, id) = open_with_action_target(&env);
     let governance = GovernanceContractClient::new(&env, &governance_id);
     governance.allow_target(&token_id);
-    governance.set_proposal_action(&admin, &id, &token_id, &Symbol::new(&env, "name"));
+    governance.set_proposal_action(&admin, &id, &token_id, &Symbol::new(&env, "name"), &soroban_sdk::Vec::new(&env));
     queue_proposal(&env, &governance, &admin, id);
     governance.disallow_target(&token_id);
 
@@ -3656,7 +3682,7 @@ fn an_action_cannot_target_a_contract_that_is_not_allowlisted() {
     let governance = GovernanceContractClient::new(&env, &governance_id);
 
     assert_eq!(
-        governance.try_set_proposal_action(&admin, &id, &token_id, &Symbol::new(&env, "name")),
+        governance.try_set_proposal_action(&admin, &id, &token_id, &Symbol::new(&env, "name"), &soroban_sdk::Vec::new(&env)),
         Err(Ok(GovernanceError::TargetNotAllowed))
     );
 }
@@ -3670,7 +3696,7 @@ fn only_the_proposer_can_attach_an_action() {
     let attacker = Address::generate(&env);
 
     assert_eq!(
-        governance.try_set_proposal_action(&attacker, &id, &token_id, &Symbol::new(&env, "name")),
+        governance.try_set_proposal_action(&attacker, &id, &token_id, &Symbol::new(&env, "name"), &soroban_sdk::Vec::new(&env)),
         Err(Ok(GovernanceError::Unauthorized))
     );
 }
@@ -3697,8 +3723,8 @@ fn allowlist_changes_emit_an_event() {
     let (_, data) = last_governance_event(&env, &governance_id);
     let admin = governance.get_config().admin;
     assert_eq!(
-        data,
-        TargetAllowlistUpdated { admin, target: token_id.clone(), allowed: true }.into_val(&env)
+        TargetAllowlistUpdated::try_from_val(&env, &data).unwrap(),
+        TargetAllowlistUpdated { admin, target: token_id.clone(), allowed: true }
     );
 }
 
@@ -3720,4 +3746,195 @@ fn non_admin_cannot_upgrade_the_contract() {
         governance.try_upgrade(&admin, &dummy_hash),
         Err(Ok(GovernanceError::Unauthorized))
     );
+}
+
+// ─── Proposal actions with arguments (#49) ───────────────────────────────────
+
+/// Opens a proposal with an allowlisted `ActionRecorder` as the action target.
+fn open_with_recorder(env: &Env) -> (Address, Address, Address, u64) {
+    let (admin, _, governance_id, id) = open_with_action_target(env);
+    let recorder_id = env.register(ActionRecorder, ());
+    GovernanceContractClient::new(env, &governance_id).allow_target(&recorder_id);
+    (admin, recorder_id, governance_id, id)
+}
+
+fn record_args(env: &Env, value: u32) -> soroban_sdk::Vec<Val> {
+    soroban_sdk::vec![env, value.into_val(env)]
+}
+
+fn execute_when_ready(env: &Env, governance: &GovernanceContractClient, admin: &Address, id: u64) -> Result<(), GovernanceError> {
+    queue_proposal(env, governance, admin, id);
+    env.ledger().set_sequence_number(governance.get_proposal(&id).queue_ledger);
+    match governance.try_execute(&Address::generate(env), &id) {
+        Ok(_) => Ok(()),
+        Err(Ok(e)) => Err(e),
+        Err(Err(_)) => panic!("execute returned an undecodable error"),
+    }
+}
+
+#[test]
+fn execute_calls_the_target_with_the_attached_arguments() {
+    let env = Env::default();
+    let (admin, recorder_id, governance_id, id) = open_with_recorder(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    governance.set_proposal_action(&admin, &id, &recorder_id, &Symbol::new(&env, "record"), &record_args(&env, 42));
+
+    assert_eq!(execute_when_ready(&env, &governance, &admin, id), Ok(()));
+
+    let recorder = ActionRecorderClient::new(&env, &recorder_id);
+    assert_eq!(recorder.calls(), soroban_sdk::vec![&env, 42u32]);
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Executed);
+}
+
+#[test]
+fn multiple_actions_are_dispatched_in_the_order_they_were_added() {
+    let env = Env::default();
+    let (admin, recorder_id, governance_id, id) = open_with_recorder(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    for value in [1u32, 2, 3] {
+        governance.set_proposal_action(&admin, &id, &recorder_id, &Symbol::new(&env, "record"), &record_args(&env, value));
+    }
+    assert_eq!(governance.get_proposal_actions(&id).len(), 3);
+
+    assert_eq!(execute_when_ready(&env, &governance, &admin, id), Ok(()));
+
+    let recorder = ActionRecorderClient::new(&env, &recorder_id);
+    assert_eq!(recorder.calls(), soroban_sdk::vec![&env, 1u32, 2, 3]);
+}
+
+#[test]
+fn a_proposal_with_no_actions_executes_without_dispatching_anything() {
+    let env = Env::default();
+    let (admin, recorder_id, governance_id, id) = open_with_recorder(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    assert_eq!(governance.get_proposal_actions(&id).len(), 0);
+
+    assert_eq!(execute_when_ready(&env, &governance, &admin, id), Ok(()));
+
+    assert_eq!(ActionRecorderClient::new(&env, &recorder_id).calls().len(), 0);
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Executed);
+}
+
+#[test]
+fn a_failing_action_returns_an_error_and_rolls_back_the_execution() {
+    let env = Env::default();
+    let (admin, recorder_id, governance_id, id) = open_with_recorder(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    governance.set_proposal_action(&admin, &id, &recorder_id, &Symbol::new(&env, "record"), &record_args(&env, 7));
+    governance.set_proposal_action(&admin, &id, &recorder_id, &Symbol::new(&env, "fail"), &soroban_sdk::Vec::new(&env));
+
+    assert_eq!(execute_when_ready(&env, &governance, &admin, id), Err(GovernanceError::ActionFailed));
+
+    // Nothing was kept: the proposal is still queued and the first call was undone.
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Queued);
+    assert_eq!(ActionRecorderClient::new(&env, &recorder_id).calls().len(), 0);
+}
+
+#[test]
+fn an_action_with_the_wrong_arguments_returns_an_error() {
+    let env = Env::default();
+    let (admin, recorder_id, governance_id, id) = open_with_recorder(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    // `record` takes one u32; calling it with none fails inside the target.
+    governance.set_proposal_action(&admin, &id, &recorder_id, &Symbol::new(&env, "record"), &soroban_sdk::Vec::new(&env));
+
+    assert_eq!(execute_when_ready(&env, &governance, &admin, id), Err(GovernanceError::ActionFailed));
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Queued);
+}
+
+#[test]
+fn a_proposal_cannot_carry_more_than_the_maximum_number_of_actions() {
+    let env = Env::default();
+    let (admin, recorder_id, governance_id, id) = open_with_recorder(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    for value in 0..MAX_PROPOSAL_ACTIONS {
+        governance.set_proposal_action(&admin, &id, &recorder_id, &Symbol::new(&env, "record"), &record_args(&env, value));
+    }
+
+    assert_eq!(
+        governance.try_set_proposal_action(&admin, &id, &recorder_id, &Symbol::new(&env, "record"), &record_args(&env, 99)),
+        Err(Ok(GovernanceError::TooManyActions))
+    );
+}
+
+// ─── Guardian rotation (#51) ─────────────────────────────────────────────────
+
+#[test]
+fn the_admin_can_replace_the_guardian() {
+    let env = Env::default();
+    let (_, _, governance_id, _) = open_with_action_target(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let previous_guardian = governance.get_config().guardian;
+    let new_guardian = Address::generate(&env);
+
+    governance.set_guardian(&new_guardian);
+
+    let (topics, data) = last_governance_event(&env, &governance_id);
+    assert_eq!(Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap(), Symbol::new(&env, "guardian_changed"));
+    assert_eq!(
+        GuardianChanged::try_from_val(&env, &data).unwrap(),
+        GuardianChanged { previous_guardian, new_guardian: new_guardian.clone() }
+    );
+    assert_eq!(governance.get_config().guardian, new_guardian);
+}
+
+#[test]
+fn only_the_admin_can_replace_the_guardian() {
+    let env = Env::default();
+    let (_, _, governance_id, _) = open_with_action_target(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let previous_guardian = governance.get_config().guardian;
+    env.set_auths(&[]);
+
+    assert!(governance.try_set_guardian(&Address::generate(&env)).is_err());
+    assert_eq!(governance.get_config().guardian, previous_guardian);
+}
+
+#[test]
+fn a_replaced_guardian_can_no_longer_veto_and_the_new_one_can() {
+    let env = Env::default();
+    let (admin, _, governance_id, id) = open_with_action_target(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let old_guardian = governance.get_config().guardian;
+    let new_guardian = Address::generate(&env);
+    governance.set_guardian(&new_guardian);
+    queue_proposal(&env, &governance, &admin, id);
+
+    assert_eq!(
+        governance.try_veto(&old_guardian, &id, &veto_reason(&env)),
+        Err(Ok(GovernanceError::Unauthorized))
+    );
+    governance.veto(&new_guardian, &id, &veto_reason(&env));
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Vetoed);
+}
+
+#[test]
+fn finalize_cannot_requeue_a_vetoed_proposal() {
+    let env = Env::default();
+    let (admin, _, governance_id, id) = open_with_action_target(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let guardian = governance.get_config().guardian;
+    queue_proposal(&env, &governance, &admin, id);
+    governance.veto(&guardian, &id, &veto_reason(&env));
+
+    assert_eq!(governance.try_finalize(&id), Err(Ok(GovernanceError::VotingNotActive)));
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Vetoed);
+    env.ledger().set_sequence_number(governance.get_proposal(&id).queue_ledger);
+    assert_eq!(
+        governance.try_execute(&Address::generate(&env), &id),
+        Err(Ok(GovernanceError::ProposalNotPassed))
+    );
+}
+
+#[test]
+fn finalize_cannot_requeue_an_executed_proposal() {
+    let env = Env::default();
+    let (admin, _, governance_id, id) = open_with_action_target(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    queue_proposal(&env, &governance, &admin, id);
+    env.ledger().set_sequence_number(governance.get_proposal(&id).queue_ledger);
+    governance.execute(&Address::generate(&env), &id);
+
+    assert_eq!(governance.try_finalize(&id), Err(Ok(GovernanceError::VotingNotActive)));
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Executed);
 }
