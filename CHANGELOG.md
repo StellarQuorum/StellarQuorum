@@ -143,6 +143,11 @@ are marked **BREAKING** below.
 
 ### Changed
 
+- CI: dependency updates are handled by Renovate instead of Dependabot. The
+  Dependabot config is removed, and `renovate.json` plus a `Renovate` workflow
+  cover the Cargo, npm, Docker, GitHub Actions and Python dependencies. The
+  comparison and the decision are recorded in `docs/dependency-updates.md`.
+  (#301)
 - Governance: `quorum_required` is computed from the token's `total_supply` as
   `total_supply * quorum_bps / 10000` and frozen into the proposal at creation.
   Previously it was hardcoded to `0`, so any single vote satisfied quorum.
