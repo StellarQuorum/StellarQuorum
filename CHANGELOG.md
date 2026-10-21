@@ -15,6 +15,12 @@ are marked **BREAKING** below.
 
 ### Breaking changes
 
+- **BREAKING (governance):** `set_proposal_action` takes a sixth argument,
+  `args: Vec<Val>`, and appends to the proposal's actions (up to 10) instead of
+  replacing the single action. `execute()` runs them in order and returns the new
+  `ActionFailed` error, rolling back, if any call fails. Actions are now stored
+  as `Vec<ProposalAction>`, so an action attached by an earlier deployment is not
+  readable by the new code. (2026-10-21)
 - **BREAKING (token):** `approve()` now takes a fifth argument,
   `expiration_ledger: u32`, per SEP-41. Four-argument callers no longer work.
   A live approval (`amount > 0`) with an expiration in the past is rejected with
@@ -50,6 +56,10 @@ are marked **BREAKING** below.
 
 ### Added
 
+- **Governance:** `set_guardian` lets the admin replace the veto guardian and
+  emits `guardian_changed`; `get_proposal_actions` returns a proposal's actions. (2026-10-21)
+- **Frontend:** the proposal detail page refreshes vote counts every 10 seconds
+  while the tab is visible and shows when it last updated. (2026-10-21)
 - **Governance:** proposer cooldown. `set_proposer_cooldown` (admin) sets how many
   ledgers a proposer must wait between opening proposals. A proposal opened too
   soon fails with `ProposerOnCooldown = 33`. `Config` gains a `proposer_cooldown`
@@ -136,6 +146,9 @@ are marked **BREAKING** below.
 
 ### Fixed
 
+- **Governance:** `finalize()` rejects a proposal that is no longer `Active`.
+  Before, calling it again could move a vetoed, cancelled or executed proposal
+  back to `Queued`, letting it execute. (2026-10-21)
 - Frontend: `ProposalCard` and the proposal detail page called
   `describeDeadline()`/`formatAbsolute()` without importing them, which broke
   `next build` (type check) and every test that renders either. The relative
