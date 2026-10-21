@@ -1,0 +1,55 @@
+{
+  // Devcontainer for Quorum (issue #299).
+  //
+  // The image installs every prerequisite listed in CONTRIBUTING.md — Node 20,
+  // Rust stable with the wasm32-unknown-unknown target, clippy/rustfmt and the
+  // Stellar CLI — and post-create.sh then installs the workspace dependencies,
+  // so opening the repo gives a working `cargo build` / `npm install`
+  // environment with no extra setup.
+  //
+  // docker-in-docker is enabled because the local Soroban network used for QA
+  // starts with `docker compose up -d` (see docker-compose.yml). Without a
+  // Docker daemon inside the container that command cannot run, and the
+  // alternative — running it on the host — does not publish the RPC port
+  // where the devcontainer can reach it.
+  "name": "Quorum (Stellar)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "remoteEnv": {
+    "PATH": "/usr/local/cargo/bin:${containerEnv:PATH}"
+  },
+  "forwardPorts": [3000, 8000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Frontend dev server"
+    },
+    "8000": {
+      "label": "Local Stellar network (Horizon / Soroban RPC)"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "files.watcherExclude": {
+          "**/target/**": true,
+          "**/.next/**": true,
+          "**/node_modules/**": true
+        },
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        }
+      }
+    }
+  }
+}

@@ -67,6 +67,30 @@ rustup target add wasm32-unknown-unknown
 cargo install stellar-cli --features opt
 ```
 
+### Devcontainer (recommended)
+
+Skip the manual setup above with a devcontainer. It installs Node 20, Rust
+stable with the `wasm32-unknown-unknown` target, clippy/rustfmt and the Stellar
+CLI, then installs the workspace dependencies, so opening the repo leaves a
+working `cargo build` / `npm install` environment with no extra steps.
+
+- **GitHub Codespaces** — open the repo and pick the `Quorum (Stellar)` machine.
+- **VS Code** — install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers),
+  then run *Dev Containers: Reopen in Container* from the command palette.
+
+The definition lives in [`.devcontainer/`](.devcontainer/):
+[`.devcontainer/Dockerfile`](.devcontainer/Dockerfile) builds the toolchain
+image and [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
+wires it up. The container also enables docker-in-docker, so the local
+Soroban network can be started from inside it with `docker compose up -d`.
+
+Once the container is ready:
+
+```bash
+cd contracts && cargo build --target wasm32-unknown-unknown --release
+cd frontend && npm run dev   # http://localhost:3000
+```
+
 ### Fork and Clone
 
 ```bash

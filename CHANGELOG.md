@@ -56,6 +56,12 @@ are marked **BREAKING** below.
 
 ### Added
 
+- CI: a devcontainer (`.devcontainer/`) installs Node 20, Rust stable with the
+  `wasm32-unknown-unknown` target, clippy/rustfmt and the Stellar CLI, then
+  installs the workspace dependencies, so a contributor can open the repo in
+  Codespaces or VS Code and start working without a manual toolchain setup.
+  Docker-in-docker is enabled, so the local Soroban network can be started from
+  inside the container with `docker compose up -d`. (#299)
 - **Governance:** `set_guardian` lets the admin replace the veto guardian and
   emits `guardian_changed`; `get_proposal_actions` returns a proposal's actions. (2026-10-21)
 - **Frontend:** the proposal detail page refreshes vote counts every 10 seconds
