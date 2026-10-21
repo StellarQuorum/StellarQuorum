@@ -434,8 +434,11 @@ stellar contract invoke --id $GOV_ID --source proposer --network testnet -- \
   --proposer $(stellar keys address proposer) \
   --proposal_id 1 \
   --target $PROTOCOL_ID \
-  --function apply_pending_fee
+  --function apply_pending_fee \
+  --args '[]'
 ```
+
+`args` lists the call's arguments in order; `apply_pending_fee` takes none. Run the command again to add another action, up to 10 per proposal. They execute in the order you added them.
 
 Attach the action as early in the voting window as you can, so voters see what they are voting on. The contract emits a `proposal_action_set` event that indexers and the frontend can display.
 
