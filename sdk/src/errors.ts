@@ -29,6 +29,17 @@ export enum GovernanceError {
   DescriptionTooLong = 21,
   MinimumQuorumRequired = 22,
   MinimumTimelockRequired = 23,
+  EmptyVetoReason = 24,
+  VetoReasonTooLong = 25,
+  VetoWindowClosed = 26,
+  TargetNotAllowed = 27,
+  InvalidCosponsors = 28,
+  InvalidAmount = 29,
+  InsufficientDeposit = 30,
+  NotExecutable = 31,
+  ProposalNotCancellable = 32,
+  ProposerOnCooldown = 33,
+  VotingNotStarted = 34,
 }
 
 /** Mirror of `TokenError` in contracts/token/src/lib.rs. Same rules as above. */

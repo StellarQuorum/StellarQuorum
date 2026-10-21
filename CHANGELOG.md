@@ -40,10 +40,20 @@ are marked **BREAKING** below.
   stored proposal changed. Clients decoding `Proposal` by position must be
   updated. `create_proposal()` keeps its signature and creates `Executable`
   proposals. `execute()` on a `Signaling` proposal fails with the new
-  `NotExecutable = 24` error. (2026-10-21)
+  `NotExecutable = 31` error. (2026-10-21)
+- **BREAKING (governance):** `ProposalStatus::Pending` and `Passed` are removed.
+  No code path ever stored them, and `get_proposal_phase` still reports both.
+  `ProposalPhase` gains `Vetoed`. `cancel()` now rejects a proposal that is not
+  `Active`, or whose voting window has closed, with the new
+  `ProposalNotCancellable = 32` error. A vote before `start_ledger` fails with
+  the new `VotingNotStarted = 34` error instead of `VotingNotActive`. (2026-10-21)
 
 ### Added
 
+- **Governance:** proposer cooldown. `set_proposer_cooldown` (admin) sets how many
+  ledgers a proposer must wait between opening proposals. A proposal opened too
+  soon fails with `ProposerOnCooldown = 33`. `Config` gains a `proposer_cooldown`
+  field, defaulting to `0` (off). (2026-10-21)
 - **Governance:** proposal deposits. `set_proposal_deposit` (admin) sets an
   amount a proposer locks on creation. It is returned when the proposal passes
   and burned when it fails or is cancelled while still held. `Config` gains a
