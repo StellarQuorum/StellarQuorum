@@ -66,7 +66,9 @@ Governance depends on three token functions (the `TokenInterface` trait in
 
 - **vote** — allowed while `ledger <= end_ledger` and the status is `Active`.
   `support` is `0` Against, `1` For or `2` Abstain; anything else is
-  `InvalidVoteChoice`. One vote per address per proposal (`AlreadyVoted`).
+  `InvalidVoteChoice`. One recorded choice per address per proposal: a repeat
+  vote while the window is open replaces it, and a repeat vote after
+  `end_ledger` fails with `AlreadyVoted`.
 - **finalize** — callable by anyone once `ledger > end_ledger`. The proposal
   moves to `Queued` (with `queue_ledger = ledger + timelock_period`) when total
   votes (for + against + abstain) reach `quorum_required` and `for_votes >

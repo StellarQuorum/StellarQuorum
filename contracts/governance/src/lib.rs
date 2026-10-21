@@ -317,6 +317,9 @@ pub struct Proposal {
     pub end_ledger: u32,
     pub queue_ledger: u32,
     pub quorum_required: i128,
+    /// Copied from `Config` when the proposal is created, so a later config
+    /// change cannot alter how long this proposal waits before execution.
+    pub timelock_period: u32,
     pub status: ProposalStatus,
     pub metadata_uri: String,
     pub kind: ProposalKind,
@@ -429,13 +432,42 @@ impl GovernanceContract {
         Self::open_proposal(&env, proposer, &cosponsors, title, description, metadata_uri, false)
     }
 
-    /// As `create_proposal`, but the `cosponsors` authorize the same transaction
-    /// and their live balances count toward `proposal_threshold` together with
-    /// the proposer's. Each co-sponsor must be distinct and not the proposer.
-    /// See `docs/architecture.md` for the authorization model.
-    pub fn create_cosponsored_proposal(env: Env, proposer: Address, cosponsors: soroban_sdk::Vec<Address>, title: String, description: String, metadata_uri: String) -> Result<u64, GovernanceError> {
-        Self::open_proposal(&env, proposer, &cosponsors, title, description, metadata_uri, false)
-    }
+        let quorum_required =
+            Self::quorum_for_supply(token.total_supply(), config.quorum_bps)?;
+        // Checked: initialize() accepts any u32 voting_period, so a period
+        // near u32::MAX would wrap the window and trap here. A trap would be
+        // unrecoverable; Overflow lets proposal creation fail cleanly instead.
+        let start_ledger = current
+            .checked_add(1)
+            .ok_or(GovernanceError::Overflow)?;
+        let end_ledger = start_ledger
+            .checked_add(config.voting_period)
+            .ok_or(GovernanceError::Overflow)?;
+        let proposal = Proposal {
+            id, proposer: proposer.clone(), title, description,
+            for_votes: 0, against_votes: 0, abstain_votes: 0,
+            snapshot_ledger: current,
+            start_ledger,
+            end_ledger,
+            queue_ledger: 0,
+            quorum_required,
+            timelock_period: config.timelock_period,
+            status: ProposalStatus::Active,
+            metadata_uri: metadata_uri.clone(),
+        };
+        env.storage().persistent().set(&DataKey::Proposal(id), &proposal);
+        env.storage().instance().set(&DataKey::ProposalCount, &id);
+        
+        // Index proposal by proposer
+        let proposer_count: u64 = env.storage().persistent()
+            .get(&DataKey::ProposerCount(proposer.clone()))
+            .unwrap_or(0);
+        let new_count = proposer_count + 1;
+        env.storage().persistent().set(&DataKey::ProposerIndex(proposer.clone(), new_count), &id);
+        env.storage().persistent().set(&DataKey::ProposerCount(proposer.clone()), &new_count);
+        
+        Self::touch_proposal(&env, id);
+        Self::touch_instance(&env);
 
     /// As `create_proposal`, but the proposal is decided on time-decayed support
     /// rather than on the raw For and Against totals. See the README for the
@@ -445,16 +477,26 @@ impl GovernanceContract {
         Self::open_proposal(&env, proposer, &cosponsors, title, description, metadata_uri, true)
     }
 
+    /// Records `voter`'s choice on `proposal_id`.
+    ///
+    /// While the window is open a voter may call again to change their choice;
+    /// the weight counted for the earlier choice is moved out of its tally
+    /// first. After `end_ledger` a repeat call is rejected with `AlreadyVoted`.
     pub fn vote(env: Env, voter: Address, proposal_id: u64, support: u32) -> Result<(), GovernanceError> {
         let config: Config = Self::require_config(&env)?;
         voter.require_auth();
         if support > 2 { return Err(GovernanceError::InvalidVoteChoice); }
-        if env.storage().persistent().has(&DataKey::HasVoted(proposal_id, voter.clone())) {
-            return Err(GovernanceError::AlreadyVoted);
-        }
         let mut proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
-        if env.ledger().sequence() > proposal.end_ledger { return Err(GovernanceError::VotingPeriodEnded); }
+        let previous: Option<u32> = env.storage().persistent()
+            .get(&DataKey::HasVoted(proposal_id, voter.clone()));
+        if env.ledger().sequence() > proposal.end_ledger {
+            return Err(if previous.is_some() {
+                GovernanceError::AlreadyVoted
+            } else {
+                GovernanceError::VotingPeriodEnded
+            });
+        }
         if proposal.status != ProposalStatus::Active { return Err(GovernanceError::VotingNotActive); }
         // The snapshot ledger must close before anyone votes. Otherwise a
         // holder could vote, re-delegate within that same ledger, and let the
@@ -467,11 +509,14 @@ impl GovernanceContract {
             .get_past_votes(&voter, &proposal.snapshot_ledger);
         if voting_power <= 0 { return Err(GovernanceError::NoVotingPower); }
 
-        let tally = match support {
-            0 => &mut proposal.against_votes,
-            1 => &mut proposal.for_votes,
-            _ => &mut proposal.abstain_votes,
-        };
+        // Remove the earlier choice's weight before counting the new one. The
+        // snapshot closed when voting opened, so this read returns the same
+        // weight that was counted then.
+        if let Some(previous_support) = previous {
+            let previous_tally = Self::tally_mut(&mut proposal, previous_support);
+            *previous_tally = Self::remove_weight(*previous_tally, voting_power)?;
+        }
+        let tally = Self::tally_mut(&mut proposal, support);
         *tally = Self::add_weight(*tally, voting_power)?;
 
         // Conviction proposals also keep time-decayed support. Abstentions are
@@ -562,7 +607,6 @@ impl GovernanceContract {
         let mut proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
         if env.ledger().sequence() <= proposal.end_ledger { return Err(GovernanceError::VotingNotActive); }
-        let config: Config = env.storage().instance().get(&DataKey::Config).unwrap();
         // Checked, for the same reason as add_weight: honest tallies cannot
         // exceed the supply, but nothing enforces that, and a trap here would
         // be unrecoverable rather than an error a caller can handle.
@@ -579,11 +623,12 @@ impl GovernanceContract {
         };
         proposal.status = if quorum_ok && majority_for {
             // initialize() accepts any u32 timelock_period; queueing must not
-            // wrap the ledger sequence into a trap when it does.
+            // wrap the ledger sequence into a trap when it does. The delay is
+            // the one captured at creation, not the live config value.
             proposal.queue_ledger = env
                 .ledger()
                 .sequence()
-                .checked_add(config.timelock_period)
+                .checked_add(proposal.timelock_period)
                 .ok_or(GovernanceError::Overflow)?;
             ProposalStatus::Queued
         } else { ProposalStatus::Failed };
@@ -1323,6 +1368,25 @@ impl GovernanceContract {
     /// can handle.
     fn add_weight(tally: i128, weight: i128) -> Result<i128, GovernanceError> {
         tally.checked_add(weight).ok_or(GovernanceError::Overflow)
+    }
+
+    /// Takes `weight` back out of a running vote tally. A tally that would go
+    /// negative means the recorded weight and the tally disagree, so it is
+    /// refused rather than wrapped.
+    fn remove_weight(tally: i128, weight: i128) -> Result<i128, GovernanceError> {
+        tally
+            .checked_sub(weight)
+            .filter(|remaining| *remaining >= 0)
+            .ok_or(GovernanceError::Overflow)
+    }
+
+    /// The tally that a `support` value adds to: 0 Against, 1 For, 2 Abstain.
+    fn tally_mut(proposal: &mut Proposal, support: u32) -> &mut i128 {
+        match support {
+            0 => &mut proposal.against_votes,
+            1 => &mut proposal.for_votes,
+            _ => &mut proposal.abstain_votes,
+        }
     }
 
     fn quorum_for_supply(total_supply: i128, quorum_bps: u32) -> Result<i128, GovernanceError> {

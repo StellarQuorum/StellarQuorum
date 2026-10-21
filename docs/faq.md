@@ -12,7 +12,7 @@ Frequently asked questions for contributors and users of Quorum governance.
 
 A: Your vote may not count for several reasons:
 - **No voting power:** You didn't hold QUORUM tokens at the proposal's snapshot ledger. Voting power is based on your balance at the snapshot, not your current balance. Tokens acquired after the snapshot carry zero weight for that proposal.
-- **Already voted:** Each address can vote only once per proposal. If you voted already, you cannot change or withdraw your vote.
+- **Already voted:** Each address keeps one recorded choice per proposal. While voting is open you can change it by voting again; after the window closes, a repeat vote is rejected and your vote is final.
 - **Proposal already finalized:** Voting is only allowed during the voting period (default: 24 hours). Once the period ends, no new votes are accepted.
 
 **Q: Why do I need tokens at the snapshot ledger and not now?**

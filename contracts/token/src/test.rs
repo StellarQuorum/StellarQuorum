@@ -1476,3 +1476,156 @@ fn cancel_admin_transfer_stops_handover() {
     token.cancel_admin_transfer();
     assert!(token.try_accept_admin().is_err());
 }
+
+// ─── Stake lock and voting boost ─────────────────────────────────────────────
+
+/// Funds a fresh holder at ledger 1, before any stake, and returns it.
+fn funded_holder(env: &Env, admin: &Address, token: &QuorumTokenClient<'_>, amount: i128) -> Address {
+    env.ledger().set_sequence_number(1);
+    let holder = Address::generate(env);
+    token.transfer(admin, &holder, &amount);
+    holder
+}
+
+#[test]
+fn stake_locks_part_of_the_balance_without_changing_it() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let holder = funded_holder(&env, &admin, &token, 1_000);
+
+    env.ledger().set_sequence_number(10);
+    token.stake(&holder, &600, &MIN_LOCK_LEDGERS);
+
+    assert_eq!(token.balance(&holder), 1_000);
+    assert_eq!(token.locked_balance(&holder), 600);
+    assert_eq!(token.spendable_balance(&holder), 400);
+    assert_eq!(token.get_past_balance(&holder, &10), 1_000);
+}
+
+#[test]
+fn stake_rejects_a_bad_amount_or_duration_and_locks_nothing() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let holder = funded_holder(&env, &admin, &token, 1_000);
+
+    assert_eq!(
+        token.try_stake(&holder, &0, &MIN_LOCK_LEDGERS),
+        Err(Ok(TokenError::InvalidAmount))
+    );
+    assert_eq!(
+        token.try_stake(&holder, &100, &(MIN_LOCK_LEDGERS - 1)),
+        Err(Ok(TokenError::InvalidDuration))
+    );
+    assert_eq!(
+        token.try_stake(&holder, &100, &(MAX_LOCK_LEDGERS + 1)),
+        Err(Ok(TokenError::InvalidDuration))
+    );
+    assert_eq!(
+        token.try_stake(&holder, &1_001, &MIN_LOCK_LEDGERS),
+        Err(Ok(TokenError::InsufficientBalance))
+    );
+    assert_eq!(token.locked_balance(&holder), 0);
+}
+
+#[test]
+fn a_second_stake_while_locked_is_rejected() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let holder = funded_holder(&env, &admin, &token, 1_000);
+
+    token.stake(&holder, &100, &MIN_LOCK_LEDGERS);
+    assert_eq!(
+        token.try_stake(&holder, &100, &MIN_LOCK_LEDGERS),
+        Err(Ok(TokenError::AlreadyStaked))
+    );
+    assert_eq!(token.locked_balance(&holder), 100);
+}
+
+#[test]
+fn locked_tokens_cannot_be_transferred_or_burned() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let holder = funded_holder(&env, &admin, &token, 1_000);
+    let other = Address::generate(&env);
+
+    token.stake(&holder, &1_000, &MIN_LOCK_LEDGERS);
+
+    assert_eq!(
+        token.try_transfer(&holder, &other, &1),
+        Err(Ok(TokenError::InsufficientBalance))
+    );
+    assert_eq!(
+        token.try_burn(&holder, &1),
+        Err(Ok(TokenError::InsufficientBalance))
+    );
+    assert_eq!(token.balance(&holder), 1_000);
+}
+
+#[test]
+fn unstake_waits_for_the_unlock_ledger_and_then_frees_the_balance() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let holder = funded_holder(&env, &admin, &token, 1_000);
+    assert_eq!(token.try_unstake(&holder), Err(Ok(TokenError::NotStaked)));
+
+    env.ledger().set_sequence_number(10);
+    token.stake(&holder, &1_000, &MIN_LOCK_LEDGERS);
+    let unlock_ledger = 10 + MIN_LOCK_LEDGERS;
+
+    env.ledger().set_sequence_number(unlock_ledger - 1);
+    assert_eq!(
+        token.try_unstake(&holder),
+        Err(Ok(TokenError::LockNotExpired))
+    );
+
+    env.ledger().set_sequence_number(unlock_ledger);
+    token.unstake(&holder);
+    assert_eq!(token.locked_balance(&holder), 0);
+    assert_eq!(token.spendable_balance(&holder), 1_000);
+    token.transfer(&holder, &admin, &1_000);
+    assert_eq!(token.balance(&holder), 0);
+
+    // A released holder can stake again.
+    token.transfer(&admin, &holder, &500);
+    token.stake(&holder, &500, &MIN_LOCK_LEDGERS);
+    assert_eq!(token.locked_balance(&holder), 500);
+}
+
+#[test]
+fn the_boost_decays_linearly_from_the_stake_to_zero_at_unlock() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let holder = funded_holder(&env, &admin, &token, 1_000);
+
+    let staked_at = 10;
+    env.ledger().set_sequence_number(staked_at);
+    token.stake(&holder, &1_000, &MAX_LOCK_LEDGERS);
+
+    // A lock counts from the ledger after it was made, so the stake ledger
+    // itself has no boost.
+    assert_eq!(token.get_past_votes(&holder, &staked_at), 1_000);
+    assert_eq!(token.get_past_votes(&holder, &(staked_at + 1)), 1_999);
+    // Halfway through a full-term lock, half the amount remains as boost.
+    assert_eq!(
+        token.get_past_votes(&holder, &(staked_at + MAX_LOCK_LEDGERS / 2)),
+        1_500
+    );
+    // The boost is gone at unlock, and the balance's own weight remains.
+    let unlock_ledger = staked_at + MAX_LOCK_LEDGERS;
+    assert_eq!(token.get_past_votes(&holder, &(unlock_ledger - 1)), 1_000);
+    assert_eq!(token.get_past_votes(&holder, &unlock_ledger), 1_000);
+}
+
+#[test]
+fn a_snapshot_before_the_stake_carries_no_boost() {
+    let env = Env::default();
+    let (admin, token) = deploy(&env);
+    let holder = funded_holder(&env, &admin, &token, 1_000);
+
+    env.ledger().set_sequence_number(50);
+    token.stake(&holder, &1_000, &MAX_LOCK_LEDGERS);
+
+    assert_eq!(token.get_past_votes(&holder, &49), 1_000);
+    assert_eq!(token.get_past_votes(&holder, &50), 1_000);
+    assert_eq!(token.get_past_votes(&holder, &51), 1_999);
+}

@@ -15,6 +15,10 @@ pub enum TokenError {
     InvalidExpiration     = 7,
     InvalidSupply         = 8,
     InvalidDecimals       = 9,
+    InvalidDuration       = 10,
+    AlreadyStaked         = 11,
+    NotStaked             = 12,
+    LockNotExpired        = 13,
 }
 
 /// A balance recorded at the ledger on which it changed.
@@ -98,6 +102,35 @@ pub struct Delegated {
     pub delegatee: Address,
 }
 
+/// A stake lock, recorded at the ledger it was taken or released.
+///
+/// `amount` is the locked part of the owner's balance, and is 0 once `unstake`
+/// has released it. `unlock_ledger` is when `unstake` first succeeds.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Lock {
+    pub ledger: u32,
+    pub amount: i128,
+    pub unlock_ledger: u32,
+}
+
+/// Emitted when a holder locks part of their balance for a voting boost.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Staked {
+    pub owner: Address,
+    pub amount: i128,
+    pub unlock_ledger: u32,
+}
+
+/// Emitted when a holder releases a stake after its lock has expired.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Unstaked {
+    pub owner: Address,
+    pub amount: i128,
+}
+
 #[contracttype]
 pub enum DataKey {
     Admin, Name, Symbol, Decimals, TotalSupply,
@@ -108,6 +141,7 @@ pub enum DataKey {
     SupplyCheckpoints,
     Delegate(Address),
     VoteCheckpoints(Address),
+    Locks(Address),
 }
 
 /// Ledgers in roughly one day, at Stellar's ~5 second close time.
@@ -135,6 +169,14 @@ const CHECKPOINT_RETENTION: u32 = LEDGERS_PER_DAY * 60;
 
 /// Maximum precision supported by the token's public formatting contract.
 const MAX_DECIMALS: u32 = 18;
+
+/// Shortest and longest stake lock, in ledgers (7 and 365 days).
+///
+/// `MAX_LOCK_LEDGERS` is also the scale of the voting boost: a lock with the
+/// full term remaining adds its own amount to the holder's voting power. See
+/// `docs/staking-vote-escrow.md`.
+const MIN_LOCK_LEDGERS: u32 = LEDGERS_PER_DAY * 7;
+const MAX_LOCK_LEDGERS: u32 = LEDGERS_PER_DAY * 365;
 
 #[contract]
 pub struct QuorumToken;
@@ -203,10 +245,14 @@ impl QuorumToken {
         }
     }
 
-    /// Balance available to spend. This token has no locked-balance model, so
-    /// the spendable balance is the same as the current balance.
+    /// Balance available to spend: the balance less any amount locked by `stake`.
     pub fn spendable_balance(env: Env, owner: Address) -> i128 {
-        Self::balance(env, owner)
+        Self::balance(env.clone(), owner.clone()) - Self::locked_amount(&env, &owner)
+    }
+
+    /// The part of `owner`'s balance locked by `stake`, or 0 once unstaked.
+    pub fn locked_balance(env: Env, owner: Address) -> i128 {
+        Self::locked_amount(&env, &owner)
     }
 
     pub fn total_supply(env: Env) -> i128 {
@@ -267,7 +313,7 @@ impl QuorumToken {
         if approval.amount < amount { return Err(TokenError::InsufficientAllowance); }
 
         let bal = Self::balance(env.clone(), from.clone());
-        if bal < amount { return Err(TokenError::InsufficientBalance); }
+        if bal - Self::locked_amount(&env, &from) < amount { return Err(TokenError::InsufficientBalance); }
         let supply = Self::total_supply(env.clone());
         let total_supply = supply
             .checked_sub(amount)
@@ -319,7 +365,7 @@ impl QuorumToken {
         from.require_auth();
         if amount <= 0 { return Err(TokenError::InvalidAmount); }
         let bal = Self::balance(env.clone(), from.clone());
-        if bal < amount { return Err(TokenError::InsufficientBalance); }
+        if bal - Self::locked_amount(&env, &from) < amount { return Err(TokenError::InsufficientBalance); }
         // Supply can only be below a holder's balance if storage is
         // inconsistent; refuse rather than underflow it. Checked before any
         // write so a refused burn changes nothing.
@@ -456,9 +502,68 @@ impl QuorumToken {
     /// Effective voting power at the close of `ledger`. Delegations and all
     /// balance-changing paths record weight, so later mappings cannot rewrite
     /// the weight of an existing proposal's snapshot.
+    ///
+    /// Adds the stake boost of `account` at that ledger. The boost is the
+    /// staker's own and is not moved by delegation.
     pub fn get_past_votes(env: Env, account: Address, ledger: u32) -> i128 {
         Self::touch_instance(&env);
-        Self::value_at(&Self::vote_checkpoints(&env, &account), ledger)
+        let votes = Self::value_at(&Self::vote_checkpoints(&env, &account), ledger);
+        votes.saturating_add(Self::lock_boost(&env, &account, ledger))
+    }
+
+    /// Locks `amount` of `owner`'s balance for `duration` ledgers.
+    ///
+    /// The balance does not change: the locked part stays in the balance and its
+    /// checkpoints, but cannot be spent until `unstake`. In return the owner's
+    /// voting power gets a boost that decays linearly to zero at the unlock
+    /// ledger. See `docs/staking-vote-escrow.md`.
+    pub fn stake(env: Env, owner: Address, amount: i128, duration: u32) -> Result<(), TokenError> {
+        owner.require_auth();
+        if amount <= 0 { return Err(TokenError::InvalidAmount); }
+        if !(MIN_LOCK_LEDGERS..=MAX_LOCK_LEDGERS).contains(&duration) {
+            return Err(TokenError::InvalidDuration);
+        }
+        if Self::current_lock(&Self::locks(&env, &owner)).is_some() {
+            return Err(TokenError::AlreadyStaked);
+        }
+        // No lock is active, so nothing is locked yet and the whole balance is
+        // available to stake.
+        if amount > Self::balance(env.clone(), owner.clone()) {
+            return Err(TokenError::InsufficientBalance);
+        }
+
+        let ledger = env.ledger().sequence();
+        let unlock_ledger = ledger.checked_add(duration).ok_or(TokenError::Overflow)?;
+        Self::record_lock(&env, &owner, Lock { ledger, amount, unlock_ledger });
+
+        env.events().publish(
+            (Symbol::new(&env, "stake"), owner.clone()),
+            Staked { owner, amount, unlock_ledger },
+        );
+        Ok(())
+    }
+
+    /// Releases the lock on `owner`'s stake once its unlock ledger has passed.
+    pub fn unstake(env: Env, owner: Address) -> Result<(), TokenError> {
+        owner.require_auth();
+        let lock = Self::current_lock(&Self::locks(&env, &owner)).ok_or(TokenError::NotStaked)?;
+        if env.ledger().sequence() < lock.unlock_ledger {
+            return Err(TokenError::LockNotExpired);
+        }
+
+        let amount = lock.amount;
+        let ledger = env.ledger().sequence();
+        Self::record_lock(
+            &env,
+            &owner,
+            Lock { ledger, amount: 0, unlock_ledger: lock.unlock_ledger },
+        );
+
+        env.events().publish(
+            (Symbol::new(&env, "unstake"), owner.clone()),
+            Unstaked { owner, amount },
+        );
+        Ok(())
     }
 }
 
@@ -504,7 +609,10 @@ impl QuorumToken {
     /// anything watching balances.
     fn move_balance(env: &Env, from: &Address, to: &Address, amount: i128) -> Result<(), TokenError> {
         let from_bal = Self::balance(env.clone(), from.clone());
-        if from_bal < amount { return Err(TokenError::InsufficientBalance); }
+        // Locked tokens stay in the balance but cannot move until unstaked.
+        if from_bal - Self::locked_amount(env, from) < amount {
+            return Err(TokenError::InsufficientBalance);
+        }
 
         Self::set_balance(env, from, from_bal - amount)?;
         // Read `to` after debiting `from`, so a self-transfer nets to zero
@@ -609,6 +717,103 @@ impl QuorumToken {
         let key = DataKey::VoteCheckpoints(owner.clone());
         env.storage().persistent().set(&key, &history);
         Self::touch(env, &key);
+    }
+
+    fn locks(env: &Env, owner: &Address) -> Vec<Lock> {
+        let key = DataKey::Locks(owner.clone());
+        match env.storage().persistent().get(&key) {
+            Some(locks) => {
+                Self::touch(env, &key);
+                locks
+            }
+            None => Vec::new(env),
+        }
+    }
+
+    /// The lock in force now: the newest entry, provided it still holds an
+    /// amount. `unstake` records a cleared entry, so a released stake reads as
+    /// no lock.
+    fn current_lock(locks: &Vec<Lock>) -> Option<Lock> {
+        let len = locks.len();
+        if len == 0 { return None; }
+        locks.get(len - 1).filter(|lock| lock.amount > 0)
+    }
+
+    /// The amount `owner` has locked now, or 0.
+    fn locked_amount(env: &Env, owner: &Address) -> i128 {
+        Self::current_lock(&Self::locks(env, owner)).map(|lock| lock.amount).unwrap_or(0)
+    }
+
+    /// Appends a lock change at the current ledger. A second change in the same
+    /// ledger replaces the first, and history older than the retention window is
+    /// pruned as balance checkpoints are, keeping the newest pruned entry.
+    fn record_lock(env: &Env, owner: &Address, lock: Lock) {
+        let mut locks = Self::locks(env, owner);
+        let len = locks.len();
+        match locks.get(len.saturating_sub(1)) {
+            Some(last) if len > 0 && last.ledger == lock.ledger => {
+                locks.set(len - 1, lock);
+            }
+            _ => locks.push_back(lock),
+        }
+
+        let cutoff = env.ledger().sequence().saturating_sub(CHECKPOINT_RETENTION);
+        let mut stale = 0u32;
+        while stale < locks.len() {
+            match locks.get(stale) {
+                Some(entry) if entry.ledger < cutoff => stale += 1,
+                _ => break,
+            }
+        }
+        if stale > 1 {
+            locks = locks.slice(stale - 1..);
+        }
+
+        let key = DataKey::Locks(owner.clone());
+        env.storage().persistent().set(&key, &locks);
+        Self::touch(env, &key);
+    }
+
+    /// The newest lock recorded strictly before `ledger`. A lock counts only
+    /// from the ledger after the one it was made in, so a stake cannot raise
+    /// the weight of a snapshot taken in the same ledger. Binary search, as in
+    /// `value_at`.
+    fn lock_before(locks: &Vec<Lock>, ledger: u32) -> Option<Lock> {
+        let mut low = 0u32;
+        let mut high = locks.len();
+        while low < high {
+            let mid = low + (high - low) / 2;
+            match locks.get(mid) {
+                Some(lock) if lock.ledger < ledger => low = mid + 1,
+                _ => high = mid,
+            }
+        }
+
+        if low == 0 {
+            None
+        } else {
+            locks.get(low - 1)
+        }
+    }
+
+    /// The voting boost `owner` holds at the close of `ledger`:
+    /// `amount * (unlock_ledger - ledger) / MAX_LOCK_LEDGERS`, zero once the
+    /// lock has expired or been released.
+    fn lock_boost(env: &Env, owner: &Address, ledger: u32) -> i128 {
+        let locks = Self::locks(env, owner);
+        let lock = match Self::lock_before(&locks, ledger) {
+            Some(lock) => lock,
+            None => return 0,
+        };
+        if lock.amount <= 0 || ledger >= lock.unlock_ledger {
+            return 0;
+        }
+
+        // Split the division so the product cannot leave i128. Because
+        // `remaining <= MAX_LOCK_LEDGERS`, the boost never exceeds `amount`.
+        let remaining = i128::from(lock.unlock_ledger - ledger);
+        let scale = i128::from(MAX_LOCK_LEDGERS);
+        (lock.amount / scale) * remaining + (lock.amount % scale) * remaining / scale
     }
 
     fn supply_checkpoints(env: &Env) -> Vec<Checkpoint> {
