@@ -36,6 +36,32 @@ A voter's weight is therefore their balance *at the snapshot*, not their current
 
 All passed proposals enter a 48-hour timelock before execution. A guardian multisig can veto during this window as a safety net against governance attacks.
 
+## QUORUM Token
+
+QUORUM is the governance token of the Quorum protocol. Holding QUORUM gives
+you voting power over protocol upgrades, parameter changes, and treasury
+allocations.
+
+| Parameter                    | Value                     |
+| ---------------------------- | ------------------------- |
+| Maximum total supply         | 1,000,000,000 QUORUM      |
+| Initial circulating supply   | ~100,000,000 QUORUM (10%) |
+| Decimals                     | 7                         |
+
+**Distribution summary**:
+
+| Category                     | Allocation |
+| ---------------------------- | ---------: |
+| Community treasury (DAO)     |        30% |
+| Core team (1y cliff, 3y vest)|        20% |
+| Drips Wave contributors      |        15% |
+| Ecosystem fund (grants)      |        15% |
+| Liquidity and market making  |        10% |
+| Early adopter airdrop        |        10% |
+
+See [docs/tokenomics.md](docs/tokenomics.md) for full vesting schedules and
+rationale.
+
 ## Roadmap
 
 - [x] Freighter wallet connection — connect, connected address, and the snapshot voting-power preview

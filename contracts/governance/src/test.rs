@@ -3552,3 +3552,23 @@ fn allowlist_changes_emit_an_event() {
         TargetAllowlistUpdated { admin, target: token_id.clone(), allowed: true }.into_val(&env)
     );
 }
+
+#[test]
+fn non_admin_cannot_upgrade_the_contract() {
+    let env = Env::default();
+    let (admin, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let non_admin = Address::generate(&env);
+    let dummy_hash = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);
+
+    env.set_auths(&[]);
+    assert_eq!(
+        governance.try_upgrade(&non_admin, &dummy_hash),
+        Err(Ok(GovernanceError::Unauthorized))
+    );
+    // Admin auth check: auth cleared so even the admin must fail without it.
+    assert_eq!(
+        governance.try_upgrade(&admin, &dummy_hash),
+        Err(Ok(GovernanceError::Unauthorized))
+    );
+}

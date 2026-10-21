@@ -4,7 +4,7 @@
 #[cfg(test)]
 extern crate std;
 
-use soroban_sdk::{contract, contractclient, contractimpl, contracttype, contracterror, Address, Env, String, Symbol, Val};
+use soroban_sdk::{contract, contractclient, contractimpl, contracttype, contracterror, Address, BytesN, Env, String, Symbol, Val};
 
 /// Subset of the QUORUM token interface the governor depends on.
 ///
@@ -252,6 +252,13 @@ pub struct TargetAllowlistUpdated {
     pub admin: Address,
     pub target: Address,
     pub allowed: bool,
+}
+
+/// Emitted when the governance contract WASM is replaced via `upgrade()`.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Upgraded {
+    pub new_wasm_hash: BytesN<32>,
 }
 
 /// Emitted when the proposer attaches the call a proposal makes on execution.
@@ -1041,6 +1048,26 @@ impl GovernanceContract {
         env.events().publish(
             (Symbol::new(&env, "contract_unpaused"), config.admin.clone()),
             ContractUnpaused { caller: config.admin },
+        );
+        Ok(())
+    }
+
+    /// Replace the governance contract's WASM bytecode.
+    ///
+    /// Only the admin may call this. In production the admin should be the
+    /// governance contract itself, so an upgrade only happens after a passed
+    /// and executed governance proposal unlocks it. `new_wasm_hash` must be
+    /// the hash of a WASM binary already uploaded to the network.
+    pub fn upgrade(env: Env, caller: Address, new_wasm_hash: BytesN<32>) -> Result<(), GovernanceError> {
+        let config = Self::require_config(&env)?;
+        caller.require_auth();
+        if caller != config.admin {
+            return Err(GovernanceError::Unauthorized);
+        }
+        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+        env.events().publish(
+            (Symbol::new(&env, "upgraded"),),
+            Upgraded { new_wasm_hash },
         );
         Ok(())
     }
