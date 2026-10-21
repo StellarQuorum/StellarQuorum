@@ -1170,7 +1170,7 @@ impl GovernanceContract {
         }
 
         // Validate title: reject empty titles
-        if title.len() == 0 {
+        if title.is_empty() {
             return Err(GovernanceError::EmptyTitle);
         }
 
@@ -1258,7 +1258,7 @@ impl GovernanceContract {
             );
             Self::touch_persistent(env, &conviction_key);
         }
-        if cosponsors.len() > 0 {
+        if !cosponsors.is_empty() {
             let cosponsors_key = DataKey::CoSponsors(id);
             env.storage().persistent().set(&cosponsors_key, cosponsors);
             Self::touch_persistent(env, &cosponsors_key);
