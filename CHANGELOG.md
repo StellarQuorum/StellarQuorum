@@ -66,6 +66,10 @@ are marked **BREAKING** below.
   throwaway accounts and drives four proposals into the Active, Queued, Failed
   and Executed states, so the frontend can be tried against real governance
   data. Every run creates fresh data. (#300)
+- Release: every tagged release now ships a CycloneDX SBOM for the contracts and
+  one for the SDK. Both are generated with Syft and the contract SBOM is
+  enriched with the published WASM artifacts, which Syft cannot catalogue on
+  its own. (#302)
 - **Governance:** `set_guardian` lets the admin replace the veto guardian and
   emits `guardian_changed`; `get_proposal_actions` returns a proposal's actions. (2026-10-21)
 - **Frontend:** the proposal detail page refreshes vote counts every 10 seconds
