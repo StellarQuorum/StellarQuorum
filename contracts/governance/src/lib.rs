@@ -624,6 +624,9 @@ impl GovernanceContract {
         let mut proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
         if env.ledger().sequence() <= proposal.end_ledger { return Err(GovernanceError::VotingNotActive); }
+        // Only an open proposal can be decided. Without this, finalize() could
+        // re-tally a Vetoed, Cancelled or Executed proposal back into Queued.
+        if proposal.status != ProposalStatus::Active { return Err(GovernanceError::VotingNotActive); }
         // Checked, for the same reason as add_weight: honest tallies cannot
         // exceed the supply, but nothing enforces that, and a trap here would
         // be unrecoverable rather than an error a caller can handle.

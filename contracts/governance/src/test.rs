@@ -3907,3 +3907,34 @@ fn a_replaced_guardian_can_no_longer_veto_and_the_new_one_can() {
     governance.veto(&new_guardian, &id, &veto_reason(&env));
     assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Vetoed);
 }
+
+#[test]
+fn finalize_cannot_requeue_a_vetoed_proposal() {
+    let env = Env::default();
+    let (admin, _, governance_id, id) = open_with_action_target(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let guardian = governance.get_config().guardian;
+    queue_proposal(&env, &governance, &admin, id);
+    governance.veto(&guardian, &id, &veto_reason(&env));
+
+    assert_eq!(governance.try_finalize(&id), Err(Ok(GovernanceError::VotingNotActive)));
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Vetoed);
+    env.ledger().set_sequence_number(governance.get_proposal(&id).queue_ledger);
+    assert_eq!(
+        governance.try_execute(&Address::generate(&env), &id),
+        Err(Ok(GovernanceError::ProposalNotPassed))
+    );
+}
+
+#[test]
+fn finalize_cannot_requeue_an_executed_proposal() {
+    let env = Env::default();
+    let (admin, _, governance_id, id) = open_with_action_target(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    queue_proposal(&env, &governance, &admin, id);
+    env.ledger().set_sequence_number(governance.get_proposal(&id).queue_ledger);
+    governance.execute(&Address::generate(&env), &id);
+
+    assert_eq!(governance.try_finalize(&id), Err(Ok(GovernanceError::VotingNotActive)));
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Executed);
+}
