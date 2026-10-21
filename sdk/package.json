@@ -63,6 +63,8 @@
     "check:publish": "node scripts/check-published.mjs",
     "prepublishOnly": "npm run build && npm run test:smoke",
     "lint": "eslint src test",
+    "spec": "node scripts/generate-client-spec.mjs",
+    "spec:check": "node scripts/generate-client-spec.mjs --check",
     "bench": "node bench/proposal-list.bench.mjs"
   },
   "dependencies": {
