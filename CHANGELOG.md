@@ -62,6 +62,10 @@ are marked **BREAKING** below.
   Codespaces or VS Code and start working without a manual toolchain setup.
   Docker-in-docker is enabled, so the local Soroban network can be started from
   inside the container with `docker compose up -d`. (#299)
+- Scripts: `scripts/seed-demo-proposals.mjs` deploys both contracts, funds three
+  throwaway accounts and drives four proposals into the Active, Queued, Failed
+  and Executed states, so the frontend can be tried against real governance
+  data. Every run creates fresh data. (#300)
 - **Governance:** `set_guardian` lets the admin replace the veto guardian and
   emits `guardian_changed`; `get_proposal_actions` returns a proposal's actions. (2026-10-21)
 - **Frontend:** the proposal detail page refreshes vote counts every 10 seconds
@@ -152,6 +156,10 @@ are marked **BREAKING** below.
 
 ### Fixed
 
+- Docs: the local-network deploy snippet in `CONTRIBUTING.md` pointed at
+  `target/.../governance.wasm` and `target/.../token.wasm`. The build writes
+  `contracts/target/wasm32-unknown-unknown/release/quorum_governance.wasm` and
+  `quorum_token.wasm`. (#300)
 - **Governance:** `finalize()` rejects a proposal that is no longer `Active`.
   Before, calling it again could move a vetoed, cancelled or executed proposal
   back to `Queued`, letting it execute. (2026-10-21)

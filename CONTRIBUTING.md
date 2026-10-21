@@ -173,14 +173,14 @@ cd contracts && cargo build --target wasm32-unknown-unknown --release && cd ..
 
 # Deploy governance contract
 stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/governance.wasm \
+  --wasm contracts/target/wasm32-unknown-unknown/release/quorum_governance.wasm \
   --source deployer \
   --rpc-url http://localhost:8000/soroban/rpc \
   --network-passphrase "Standalone Network ; February 2017"
 
 # Deploy token contract
 stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/token.wasm \
+  --wasm contracts/target/wasm32-unknown-unknown/release/quorum_token.wasm \
   --source deployer \
   --rpc-url http://localhost:8000/soroban/rpc \
   --network-passphrase "Standalone Network ; February 2017"
@@ -203,6 +203,70 @@ QUORUM_E2E_RPC_URL=http://localhost:8000/soroban/rpc \
 QUORUM_E2E_FRIENDBOT_URL=http://localhost:8000/friendbot \
 npm run test:e2e
 ```
+
+### Demo Proposal Seed Script
+
+`scripts/seed-demo-proposals.mjs` fills a network with demo governance data so
+the UI has something to show. It deploys both contracts (or reuses a
+deployment you point it at), funds three throwaway accounts and drives four
+proposals into one state each:
+
+| Proposal | Outcome | How it gets there |
+|---|---|---|
+| #1 | **Queued** | Passes quorum and a vote of `for`, then waits out the timelock |
+| #2 | **Failed** | Only a vote of `against`, so the quorum is not met |
+| #3 | **Executed** | Passes quorum, is finalized, waits out the timelock and executes |
+| #4 | **Active** | Created last, so its voting window is still open when the script ends |
+
+**Every run creates fresh data.** New contracts, new accounts, new proposals —
+nothing is reused and nothing is cleaned up, so the contract ids, the proposal
+ids and the account keys printed at the end differ on every run. The script is
+meant for a throwaway test network (the local quickstart network), never for a
+production one.
+
+Requirements:
+
+```bash
+# 1. The SDK's dependencies — the script uses @stellar/stellar-sdk from sdk/
+cd sdk && npm ci && cd ..
+
+# 2. The contract WASM files
+cd contracts && cargo build --target wasm32-unknown-unknown --release && cd ..
+
+# 3. A network with a friendbot, plus the Stellar CLI on PATH
+docker compose up -d
+```
+
+Then:
+
+```bash
+node scripts/seed-demo-proposals.mjs
+```
+
+The script prints the governance and token contract ids at the end. Point the
+frontend at them to try the seeded proposals:
+
+```bash
+NEXT_PUBLIC_GOVERNANCE_CONTRACT=<id>
+NEXT_PUBLIC_TOKEN_CONTRACT=<id>
+```
+
+Point it at an existing deployment instead of deploying new contracts with
+`QUORUM_GOVERNANCE_CONTRACT` (the token contract is read from the governance
+contract's config, and `QUORUM_TOKEN_ADMIN_SECRET` is needed to fund the demo
+voters there):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `QUORUM_RPC_URL` | `http://localhost:8000/soroban/rpc` | Soroban RPC endpoint |
+| `QUORUM_FRIENDBOT_URL` | `http://localhost:8000/friendbot` | Friendbot used to fund the demo accounts |
+| `QUORUM_NETWORK_PASSPHRASE` | `Standalone Network ; February 2017` | Network passphrase |
+| `QUORUM_WASM_DIR` | `contracts/target/wasm32-unknown-unknown/release` | Directory holding the built WASM files |
+| `QUORUM_GOVERNANCE_CONTRACT` | — | Governance contract to seed instead of deploying one |
+| `QUORUM_TOKEN_CONTRACT` | read from the governance config | Token contract to use |
+| `QUORUM_TOKEN_ADMIN_SECRET` | — | Secret key of the token admin, needed to fund the demo voters on an existing deployment |
+| `QUORUM_DEMO_VOTING_PERIOD` | `30` | Voting period of a freshly deployed contract, in ledgers |
+| `QUORUM_DEMO_TIMELOCK_PERIOD` | `2` | Timelock period of a freshly deployed contract, in ledgers |
 
 ### Mutation Testing
 

@@ -75,6 +75,26 @@ stellar contract invoke --id $TOKEN_ID --rpc-url $RPC_URL \
   --network-passphrase "$PASSPHRASE" -- balance --owner $SOURCE_ACCOUNT
 ```
 
+## Seeding Demo Proposals
+
+A freshly deployed contract has no proposals, which makes it hard to try the
+frontend against real data. `scripts/seed-demo-proposals.mjs` fills a network
+with demo proposals in every state the UI renders — Active, Queued, Failed and
+Executed:
+
+```bash
+node scripts/seed-demo-proposals.mjs
+```
+
+The script deploys both contracts itself, funds three throwaway accounts and
+drives four proposals to their final states. **Every run creates fresh data**:
+new contracts, new accounts and new proposals, so the ids it prints differ on
+every run and nothing is cleaned up afterwards. Point it at an existing
+deployment with `QUORUM_GOVERNANCE_CONTRACT` instead of deploying new
+contracts. See
+[CONTRIBUTING.md](../CONTRIBUTING.md#demo-proposal-seed-script) for the full
+list of environment variables and the local-network walkthrough.
+
 ## Contract Size and Rent
 
 Soroban charges rent on the bytes of the deployed wasm, so artifact size is a
