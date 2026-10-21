@@ -6,7 +6,9 @@ import { t } from "@/lib/i18n";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import MarkdownPreview from "@/components/MarkdownPreview";
 import { isValidStellarAddress } from "@/lib/validators";
+import { getProposalTemplates, type ProposalTemplate } from "@/lib/proposal-templates";
 
+const TEMPLATES = getProposalTemplates();
 const CATEGORIES = ["financial", "technical", "treasury", "governance", "security", "community", "protocol"].map(key => t("create.categories." + key));
 const DURATIONS = ["three", "five", "seven", "fourteen", "thirty"].map(key => t("create.durations." + key));
 const QUORUM = t("create.quorumValue");
@@ -65,6 +67,18 @@ export default function CreatePage() {
     return valid;
   };
 
+  // A template replaces the pending debounced save, which would otherwise write
+  // the pre-template form back over the template a second later.
+  const applyTemplate = (template: ProposalTemplate) => {
+    if (template.category === null || template.description === null) return;
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    const newForm = { ...form, category: template.category, description: template.description };
+    setForm(newForm);
+    saveDraft(newForm);
+  };
+
   const handleSubmit = () => {
     clearDraft();
     setStep("submitted");
@@ -114,6 +128,24 @@ export default function CreatePage() {
       <div className="flex flex-col-reverse sm:flex-row gap-3"><button type="button" onClick={() => setStep("edit")} className="flex-1 py-3 border border-[#1a2535] text-slate-300 rounded-lg font-semibold">{t("create.edit")}</button><button type="button" onClick={handleSubmit} className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold">{t("create.sign")}</button></div>
       <p className="text-xs text-slate-500 text-center">{t("create.fee")}</p>
     </section> : <form onSubmit={event => { event.preventDefault(); if (validateContractAddress()) setStep("review"); }} className="flex flex-col gap-6">
+      {!form.description && (
+        <fieldset className="p-5 rounded-xl bg-[#0d1520] border border-[#1a2535] flex flex-col gap-3">
+          <legend className="font-semibold text-white mb-1">{t("templates.label")}</legend>
+          <div className="flex flex-wrap gap-2">
+            {TEMPLATES.map(template => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => applyTemplate(template)}
+                className="px-3 py-1.5 border border-[#1a2535] hover:border-blue-700 text-slate-300 rounded-lg text-sm transition-colors"
+              >
+                {template.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500">{t("templates.hint")}</p>
+        </fieldset>
+      )}
       <div className="p-5 rounded-xl bg-[#0d1520] border border-[#1a2535] flex flex-col gap-5">
         <h2 className="font-semibold text-white">{t("create.details")}</h2>
         <div><label htmlFor="proposal-title" className="text-sm text-slate-400 mb-1.5 block">{t("create.titleLabel")}</label><input id="proposal-title" required value={form.title} onChange={set("title")} placeholder={t("create.titlePlaceholder")} className={inputClass} /></div>
