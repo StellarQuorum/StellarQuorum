@@ -518,21 +518,68 @@ fn votes_accumulate_into_the_matching_tally() {
 }
 
 #[test]
-fn a_voter_cannot_vote_twice() {
+fn a_voter_can_change_their_vote_while_voting_is_open() {
     let env = Env::default();
     let (admin, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
     let governance = GovernanceContractClient::new(&env, &governance_id);
 
     governance.vote(&admin, &proposal_id, &VOTE_FOR);
+    governance.vote(&admin, &proposal_id, &VOTE_AGAINST);
+    let proposal = governance.get_proposal(&proposal_id);
+    assert_eq!(proposal.for_votes, 0);
+    assert_eq!(proposal.against_votes, 1_000_000);
+    assert_eq!(governance.get_vote(&proposal_id, &admin), Some(VOTE_AGAINST));
+
+    governance.vote(&admin, &proposal_id, &VOTE_ABSTAIN);
+    let proposal = governance.get_proposal(&proposal_id);
+    assert_eq!(proposal.for_votes, 0);
+    assert_eq!(proposal.against_votes, 0);
+    assert_eq!(proposal.abstain_votes, 1_000_000);
+    assert_eq!(governance.get_vote(&proposal_id, &admin), Some(VOTE_ABSTAIN));
+}
+
+#[test]
+fn a_changed_vote_only_moves_that_voters_own_weight() {
+    let env = Env::default();
+    let other = Address::generate(&env);
+    let (admin, governance_id, proposal_id) = open_with_holders(
+        &env,
+        1_000_000,
+        QUORUM_BPS,
+        &[(other.clone(), 300_000)],
+    );
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    // The admin keeps 700_000 after the grant.
+    governance.vote(&other, &proposal_id, &VOTE_FOR);
+    governance.vote(&admin, &proposal_id, &VOTE_AGAINST);
+    governance.vote(&admin, &proposal_id, &VOTE_ABSTAIN);
+
+    let proposal = governance.get_proposal(&proposal_id);
+    assert_eq!(proposal.for_votes, 300_000);
+    assert_eq!(proposal.against_votes, 0);
+    assert_eq!(proposal.abstain_votes, 700_000);
+}
+
+#[test]
+fn a_repeat_vote_after_the_window_closes_is_still_rejected() {
+    let env = Env::default();
+    let (admin, governance_id, proposal_id) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let end_ledger = governance.get_proposal(&proposal_id).end_ledger;
+
+    governance.vote(&admin, &proposal_id, &VOTE_FOR);
+    env.ledger().set_sequence_number(end_ledger + 1);
     assert_eq!(
         governance.try_vote(&admin, &proposal_id, &VOTE_AGAINST),
         Err(Ok(GovernanceError::AlreadyVoted))
     );
 
-    // The rejected second vote left the tallies untouched.
+    // The rejected call left the recorded choice and the tallies untouched.
     let proposal = governance.get_proposal(&proposal_id);
     assert_eq!(proposal.for_votes, 1_000_000);
     assert_eq!(proposal.against_votes, 0);
+    assert_eq!(governance.get_vote(&proposal_id, &admin), Some(VOTE_FOR));
 }
 
 #[test]
@@ -1585,6 +1632,48 @@ fn tallying_the_entire_supply_at_the_boundary_does_not_trap() {
     governance.vote(&admin, &proposal_id, &VOTE_FOR);
 
     assert_eq!(governance.get_proposal(&proposal_id).for_votes, i128::MAX);
+}
+
+#[test]
+fn finalize_returns_overflow_when_the_tallies_sum_past_the_boundary() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(10);
+    let (admin, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+
+    env.ledger().set_sequence_number(20);
+    let proposal_id = governance.create_proposal(
+        &admin,
+        &String::from_str(&env, "Tallies past i128::MAX"),
+        &String::from_str(&env, "Unreachable through votes, so tallies are seeded directly."),
+        &String::from_str(&env, ""),
+    );
+    // Token supply cannot push the sum of tallies past i128::MAX through the
+    // public API, so the boundary is reached by writing the proposal directly.
+    env.as_contract(&governance_id, || {
+        let mut proposal: Proposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Proposal(proposal_id))
+            .unwrap();
+        proposal.for_votes = i128::MAX;
+        proposal.against_votes = 1;
+        env.storage()
+            .persistent()
+            .set(&DataKey::Proposal(proposal_id), &proposal);
+    });
+
+    let end_ledger = governance.get_proposal(&proposal_id).end_ledger;
+    env.ledger().set_sequence_number(end_ledger + 1);
+    assert_eq!(
+        governance.try_finalize(&proposal_id),
+        Err(Ok(GovernanceError::Overflow))
+    );
+    // A rejected finalize leaves the proposal open rather than half-decided.
+    assert_eq!(
+        governance.get_proposal(&proposal_id).status,
+        ProposalStatus::Active
+    );
 }
 
 #[test]

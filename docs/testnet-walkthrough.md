@@ -275,9 +275,9 @@ After the transaction confirms, the proposal page will show:
 
 ### "Already voted" error
 
-**Cause:** You already voted on this proposal. Each address can vote only once per proposal.
+**Cause:** You already voted on this proposal, and the voting window has closed. Each address keeps one recorded choice per proposal.
 
-**Solution:** You cannot change or withdraw your vote. Consider this before voting.
+**Solution:** While voting is open you can change your choice by voting again. Once the window closes, your vote is final.
 
 ---
 

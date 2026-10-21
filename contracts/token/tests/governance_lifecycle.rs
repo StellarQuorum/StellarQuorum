@@ -162,7 +162,9 @@ fn full_cycle_mint_distribute_snapshot_vote_finalize_execute() {
     // Tokens acquired after the snapshot carry no weight.
     assert_eq!(governance.try_vote(&erin, &id, &FOR), Err(Ok(GovernanceError::NoVotingPower)));
     assert_eq!(governance.try_vote(&frank, &id, &FOR), Err(Ok(GovernanceError::NoVotingPower)));
-    assert_eq!(governance.try_vote(&alice, &id, &FOR), Err(Ok(GovernanceError::AlreadyVoted)));
+    // Still inside the window, so a repeat vote replaces the earlier choice.
+    // Repeating the same choice leaves the tallies below unchanged.
+    assert!(governance.try_vote(&alice, &id, &FOR).is_ok());
 
     // Each tally is exactly the voters' snapshot balances, not their live
     // ones: Alice now holds 240,000 and Bob 150,000.

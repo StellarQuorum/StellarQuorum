@@ -21,8 +21,20 @@ SEP-41 compatible governance token for the Quorum protocol.
   zero. Neither traps, and a refused call changes nothing.
 
 `burn_from` lets an approved spender burn against the owner's allowance and
-emits a burn event naming that owner. `spendable_balance` is equal to `balance`
-because this token has no locked balances.
+emits a burn event naming that owner. `spendable_balance` is `balance` less any
+amount locked by `stake`; transfers and burns can only spend the spendable part.
+
+## Staking and voting boost
+
+- `stake(owner, amount, duration)` locks part of the owner's balance for
+  `duration` ledgers, between 7 and 365 days. The balance does not change. One
+  active lock per owner.
+- `unstake(owner)` releases the lock once its unlock ledger has passed.
+- `locked_balance(owner)` returns the amount currently locked.
+- `get_past_votes` adds a boost to the owner's own weight: the locked amount
+  times the ledgers remaining, divided by 365 days. It decays linearly to zero
+  at unlock, and a lock counts only from the ledger after it was made. The boost
+  is not moved by delegation. See [docs/staking-vote-escrow.md](../../docs/staking-vote-escrow.md).
 
 ## Delegation and snapshots
 

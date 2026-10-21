@@ -37,10 +37,9 @@ fn delegated_weight_is_counted_once_and_later_changes_cannot_rewrite_a_snapshot(
         governor.try_vote(&alice, &proposal, &1),
         Err(Ok(GovernanceError::NoVotingPower))
     );
-    assert_eq!(
-        governor.try_vote(&bob, &proposal, &1),
-        Err(Ok(GovernanceError::AlreadyVoted))
-    );
+    // Still inside the window, so a repeat vote replaces the earlier choice
+    // rather than adding to it: the weight stays counted once.
+    assert!(governor.try_vote(&bob, &proposal, &1).is_ok());
     assert_eq!(governor.get_proposal(&proposal).for_votes, 160);
     assert_eq!(governor.get_past_votes(&bob, &19), 40);
     assert_eq!(governor.get_past_votes(&bob, &20), 140);
@@ -232,4 +231,37 @@ fn token_overflow_is_reported_with_the_governance_error_code() {
             .persistent()
             .has(&DataKey::Delegate(admin.clone())));
     });
+}
+
+#[test]
+fn a_stake_boost_counts_toward_the_snapshot_weight_and_the_vote() {
+    let env = Env::default();
+    env.ledger().set_sequence_number(10);
+    let (admin, token_id, governor_id) = deploy(&env, 1_000_000, QUORUM_BPS);
+    let token = QuorumTokenClient::new(&env, &token_id);
+    let governor = GovernanceContractClient::new(&env, &governor_id);
+    let holder = Address::generate(&env);
+    token.transfer(&admin, &holder, &1_000);
+
+    // Locked for the full term on ledger 20. The lock counts from ledger 21,
+    // which is the snapshot ledger of the proposal opened there.
+    env.ledger().set_sequence_number(20);
+    token.stake(&holder, &1_000, &(LEDGERS_PER_DAY * 365));
+    env.ledger().set_sequence_number(21);
+    let proposal = governor.create_proposal(
+        &admin,
+        &text(&env, "Boost"),
+        &text(&env, ""),
+        &text(&env, ""),
+    );
+
+    // The balance's 1,000 plus a boost just under the full 1,000: the lock
+    // has 365 days less one ledger to run.
+    let snapshot_power = governor.get_voting_power(&proposal, &holder);
+    assert_eq!(snapshot_power, 1_999);
+    assert_eq!(snapshot_power, token.get_past_votes(&holder, &21));
+
+    env.ledger().set_sequence_number(22);
+    governor.vote(&holder, &proposal, &1);
+    assert_eq!(governor.get_proposal(&proposal).for_votes, 1_999);
 }

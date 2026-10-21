@@ -649,8 +649,9 @@ export class QuorumClient {
    * Builds signable XDR for `vote(voter, proposal_id, support)` (issue #114).
    *
    * Casts a vote on an active proposal. `support` is `0` (Against), `1` (For),
-   * or `2` (Abstain). `voter` must sign and must not have already voted on
-   * this proposal. `source` pays the fee and defaults to `voter`.
+   * or `2` (Abstain). `voter` must sign. A voter who has already voted may
+   * vote again while the window is open to change their choice. `source` pays
+   * the fee and defaults to `voter`.
    *
    * @throws {ProposalNotFoundError} unknown proposal id.
    * @throws {VotingNotActiveError} proposal voting window is closed.

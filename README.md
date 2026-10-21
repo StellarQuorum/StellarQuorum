@@ -95,7 +95,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, the
 - **See examples first?** Check [Example Governance Proposals](docs/proposal-examples.md) for each category
 - **Community calls & office hours?** Details at [Community Calls](docs/community-calls.md)
 - **Good first issues?** See the [Curation Process](docs/good-first-issue-curation.md)
-- **Adopting Quorum for your protocol?** Follow the [Governance Adoption Playbook](docs/governance-playbook.md)
+- **Adopting Quorum for your protocol?** Follow the [Governance Adoption Playbook](docs/governance-playbook.md), then build the integration with the [Adoption Tutorial](docs/tutorial.md)
 - **Walkthrough of testnet voting?** See the [Testnet Walkthrough](docs/testnet-walkthrough.md) with video transcript
 - **Governance forum?** Join discussions at [GitHub Discussions](https://github.com/StellarQuorum/StellarQuorum/discussions) — see [Governance Forum docs](docs/governance-forum.md)
 - **Using Quorum?** List your protocol on [ADOPTERS.md](ADOPTERS.md)

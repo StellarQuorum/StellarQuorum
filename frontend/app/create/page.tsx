@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { t } from "@/lib/i18n";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import MarkdownPreview from "@/components/MarkdownPreview";
+import { isValidStellarAddress } from "@/lib/validators";
 
 const CATEGORIES = ["financial", "technical", "treasury", "governance", "security", "community", "protocol"].map(key => t("create.categories." + key));
 const DURATIONS = ["three", "five", "seven", "fourteen", "thirty"].map(key => t("create.durations." + key));
@@ -21,6 +22,7 @@ export default function CreatePage() {
   const [step, setStep] = useState<Step>("edit");
   const [showDraftRestore, setShowDraftRestore] = useState(false);
   const [previewTab, setPreviewTab] = useState<"edit" | "preview">("edit");
+  const [contractAddressError, setContractAddressError] = useState<string | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -36,6 +38,7 @@ export default function CreatePage() {
   const set = (key: keyof FormState) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const newForm = { ...form, [key]: event.target.value };
     setForm(newForm);
+    if (key === "contractAddress") setContractAddressError(null);
 
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -53,6 +56,13 @@ export default function CreatePage() {
     clearDraft();
     setForm(EMPTY_FORM);
     setShowDraftRestore(false);
+  };
+
+  const validateContractAddress = () => {
+    const address = form.contractAddress.trim();
+    const valid = !address || isValidStellarAddress(address);
+    setContractAddressError(valid ? null : "Invalid Stellar contract address");
+    return valid;
   };
 
   const handleSubmit = () => {
@@ -103,7 +113,7 @@ export default function CreatePage() {
       </dl>
       <div className="flex flex-col-reverse sm:flex-row gap-3"><button type="button" onClick={() => setStep("edit")} className="flex-1 py-3 border border-[#1a2535] text-slate-300 rounded-lg font-semibold">{t("create.edit")}</button><button type="button" onClick={handleSubmit} className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold">{t("create.sign")}</button></div>
       <p className="text-xs text-slate-500 text-center">{t("create.fee")}</p>
-    </section> : <form onSubmit={event => { event.preventDefault(); setStep("review"); }} className="flex flex-col gap-6">
+    </section> : <form onSubmit={event => { event.preventDefault(); if (validateContractAddress()) setStep("review"); }} className="flex flex-col gap-6">
       <div className="p-5 rounded-xl bg-[#0d1520] border border-[#1a2535] flex flex-col gap-5">
         <h2 className="font-semibold text-white">{t("create.details")}</h2>
         <div><label htmlFor="proposal-title" className="text-sm text-slate-400 mb-1.5 block">{t("create.titleLabel")}</label><input id="proposal-title" required value={form.title} onChange={set("title")} placeholder={t("create.titlePlaceholder")} className={inputClass} /></div>
@@ -145,7 +155,7 @@ export default function CreatePage() {
       <div className="p-5 rounded-xl bg-[#0d1520] border border-[#1a2535] flex flex-col gap-5">
         <div className="flex items-center gap-2"><Plus size={16} className="text-blue-400" /><h2 className="font-semibold text-white">{t("create.action")}</h2><span className="text-xs text-slate-500">{t("common.optional")}</span></div>
         <div><label htmlFor="action-description" className="text-sm text-slate-400 mb-1.5 block">{t("create.actionDescription")}</label><input id="action-description" value={form.actionDescription} onChange={set("actionDescription")} placeholder={t("create.actionPlaceholder")} className={inputClass} /></div>
-        <div className="grid grid-cols-2 gap-4"><div><label htmlFor="contract-address" className="text-sm text-slate-400 mb-1.5 block">{t("create.contract")}</label><input id="contract-address" value={form.contractAddress} onChange={set("contractAddress")} placeholder="CC..." className={`${inputClass} font-mono text-xs`} /></div><div><label htmlFor="function-name" className="text-sm text-slate-400 mb-1.5 block">{t("create.function")}</label><input id="function-name" value={form.functionName} onChange={set("functionName")} placeholder="set_param" className={`${inputClass} font-mono text-xs`} /></div></div>
+        <div className="grid grid-cols-2 gap-4"><div><label htmlFor="contract-address" className="text-sm text-slate-400 mb-1.5 block">{t("create.contract")}</label><input id="contract-address" value={form.contractAddress} onChange={set("contractAddress")} onBlur={validateContractAddress} placeholder="CC..." aria-invalid={!!contractAddressError} aria-describedby={contractAddressError ? "contract-address-error" : undefined} className={`${inputClass} font-mono text-xs ${contractAddressError ? "border-red-600 focus:border-red-500" : ""}`} />{contractAddressError && <p id="contract-address-error" role="alert" className="mt-1.5 text-xs text-red-400">{contractAddressError}</p>}</div><div><label htmlFor="function-name" className="text-sm text-slate-400 mb-1.5 block">{t("create.function")}</label><input id="function-name" value={form.functionName} onChange={set("functionName")} placeholder="set_param" className={`${inputClass} font-mono text-xs`} /></div></div>
       </div>
       <div className="flex flex-col gap-3"><button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-lg font-semibold">{t("create.review")}</button><p className="text-xs text-slate-500 text-center">{t("create.reviewBefore")}</p></div>
     </form>}
