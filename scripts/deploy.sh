@@ -54,6 +54,34 @@ echo "Done. Add to your .env.local:"
 echo "NEXT_PUBLIC_GOVERNANCE_CONTRACT=$GOV_ID"
 echo "NEXT_PUBLIC_TOKEN_CONTRACT=$TOKEN_ID"
 
+# ---------------------------------------------------------------------------
+# Upgrade an already-deployed governance contract
+# ---------------------------------------------------------------------------
+# To upgrade: build the new WASM, upload it, then submit an upgrade proposal.
+#
+# 1. Upload the new WASM and capture the hash:
+#      NEW_HASH=$(stellar contract upload \
+#        --wasm "$WASM_DIR/quorum_governance.wasm" \
+#        --source "$SOURCE_ACCOUNT" \
+#        --rpc-url "$RPC_URL" \
+#        --network-passphrase "$PASSPHRASE")
+#
+# 2. Create a governance proposal with the action set to call `upgrade`:
+#      stellar contract invoke --id "$GOV_ID" --source "$SOURCE_ACCOUNT" \
+#        --rpc-url "$RPC_URL" --network-passphrase "$PASSPHRASE" \
+#        -- set_proposal_action \
+#        --proposer "$SOURCE_ACCOUNT" --proposal_id <ID> \
+#        --target "$GOV_ID" --function upgrade
+#
+# 3. After the proposal passes and the timelock expires, execute it:
+#      stellar contract invoke --id "$GOV_ID" --source "$SOURCE_ACCOUNT" \
+#        --rpc-url "$RPC_URL" --network-passphrase "$PASSPHRASE" \
+#        -- execute --executor "$SOURCE_ACCOUNT" --proposal_id <ID>
+#
+# The governance contract will call upgrade() on itself, replacing the WASM.
+# Note: in production the admin should be the governance contract's own address
+# so no single key can bypass the governance vote to trigger an upgrade.
+
 if [[ -n "${DEPLOY_OUTPUT:-}" ]]; then
   cat > "$DEPLOY_OUTPUT" <<JSON
 {

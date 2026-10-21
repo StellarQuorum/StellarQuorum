@@ -4,6 +4,7 @@ Soroban smart contract implementing on-chain governance for the Quorum protocol.
 
 ## Functions
 
+- `upgrade` — replace the contract WASM bytecode (admin only; see [Contract Upgrades](#contract-upgrades))
 - `initialize` — set config, quorum params, token address, guardian, and execution grace period
 - `create_proposal` — create a new proposal (requires live token balance >= `proposal_threshold`)
 - `create_proposal_with_kind` — as `create_proposal`, choosing `Signaling` (never executed) or `Executable`
@@ -282,3 +283,18 @@ CI assertions allow up to 25% above each baseline (334,212 / 59,787 for
 `create_proposal()` and 282,745 / 47,767 for `vote()`). Re-measure and update
 both this table and the thresholds when an intentional change materially
 alters the contract's resource use.
+
+## Contract Upgrades
+
+The governance contract supports WASM upgrades via `upgrade(caller, new_wasm_hash)`.
+
+**Authorization**: only the contract admin may call `upgrade`. In production the admin should be the governance contract itself (set this by calling `transfer_admin` to the contract's own address after bootstrapping). This means an upgrade can only be triggered by a passed and executed governance proposal — giving token holders full control over the upgrade path.
+
+**Process**:
+1. Upload the new WASM to the Stellar network with `stellar contract upload`.
+2. Create a governance proposal whose `set_proposal_action` targets the governance contract and calls `upgrade` with the returned WASM hash.
+3. Once the proposal passes and clears the timelock, call `execute` — this invokes `upgrade` and replaces the bytecode.
+
+**Event**: a successful `upgrade` emits an `Upgraded { new_wasm_hash }` event, giving indexers an on-chain record of every bytecode swap.
+
+**Security**: the upgrade function is the most powerful call in the contract. Never grant admin to an EOA in production; keep it locked behind the governance contract's own address so no single key can perform an upgrade.
