@@ -250,6 +250,10 @@ try { /* ... */ } catch (e) {
 }
 ```
 
+### Client spec
+
+`sdk/spec/quorum-client.spec.json` describes every public `QuorumClient` method (parameters, types, return types) and the `GovernanceError` and `TokenError` codes, for bindings and docs in other languages. It is generated from `sdk/src` by `npm run spec` in `sdk/`. CI runs `npm run spec:check` and fails if the file has drifted from the source.
+
 ### Releases
 
 `@quorum/sdk` releases are tagged `sdk-vX.Y.Z` and published to npm by CI with

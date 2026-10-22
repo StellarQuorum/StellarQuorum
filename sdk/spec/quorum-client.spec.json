@@ -1,0 +1,682 @@
+{
+  "generatedFrom": [
+    "src/client.ts",
+    "src/errors.ts"
+  ],
+  "client": "QuorumClient",
+  "methods": [
+    {
+      "name": "invalidateCache",
+      "parameters": [
+        {
+          "name": "method",
+          "type": "ReadMethod",
+          "optional": true,
+          "rest": false
+        },
+        {
+          "name": "args",
+          "type": "unknown[]",
+          "optional": false,
+          "rest": true
+        }
+      ],
+      "returns": "void"
+    },
+    {
+      "name": "getProposal",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Proposal | null>"
+    },
+    {
+      "name": "getProposalCount",
+      "parameters": [
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "getLatestLedger",
+      "parameters": [
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<number>"
+    },
+    {
+      "name": "getVotingPower",
+      "parameters": [
+        {
+          "name": "voter",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "snapshotLedger",
+          "type": "number",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "getDelegate",
+      "parameters": [
+        {
+          "name": "holder",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "getBalance",
+      "parameters": [
+        {
+          "name": "voter",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "getTokenDecimals",
+      "parameters": [
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<number>"
+    },
+    {
+      "name": "getConfig",
+      "parameters": [
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<GovernanceConfig>"
+    },
+    {
+      "name": "hasVoted",
+      "parameters": [
+        {
+          "name": "proposalId",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "voter",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<boolean>"
+    },
+    {
+      "name": "getVote",
+      "parameters": [
+        {
+          "name": "proposalId",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "voter",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<VoteSupport | null>"
+    },
+    {
+      "name": "getProposalsByStatus",
+      "parameters": [
+        {
+          "name": "status",
+          "type": "Proposal['status']",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "GetProposalsOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Proposal[]>"
+    },
+    {
+      "name": "getProposals",
+      "parameters": [
+        {
+          "name": "options",
+          "type": "GetProposalsOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Proposal[]>"
+    },
+    {
+      "name": "getAllProposals",
+      "parameters": [
+        {
+          "name": "options",
+          "type": "GetProposalsOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Proposal[]>"
+    },
+    {
+      "name": "balance",
+      "parameters": [
+        {
+          "name": "owner",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "getPastBalance",
+      "parameters": [
+        {
+          "name": "owner",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "ledger",
+          "type": "number",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "allowance",
+      "parameters": [
+        {
+          "name": "owner",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "spender",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "totalSupply",
+      "parameters": [
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "submitAndWait",
+      "parameters": [
+        {
+          "name": "signedXdr",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "TransactionConfirmationOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<rpc.Api.GetSuccessfulTransactionResponse>"
+    },
+    {
+      "name": "waitForProposalStatus",
+      "parameters": [
+        {
+          "name": "proposalId",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "targetStatus",
+          "type": "ProposalStatus",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "WaitForStatusOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<Proposal>"
+    },
+    {
+      "name": "estimateFees",
+      "parameters": [
+        {
+          "name": "transactionXdr",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<FeeEstimate>"
+    },
+    {
+      "name": "buildCreateProposal",
+      "parameters": [
+        {
+          "name": "proposer",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "buildVote",
+      "parameters": [
+        {
+          "name": "voter",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "support",
+          "type": "VoteSupport",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "buildDelegate",
+      "parameters": [
+        {
+          "name": "delegator",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "delegatee",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "buildUndelegate",
+      "parameters": [
+        {
+          "name": "delegator",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "buildFinalize",
+      "parameters": [
+        {
+          "name": "source",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "buildExecute",
+      "parameters": [
+        {
+          "name": "source",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "buildCancel",
+      "parameters": [
+        {
+          "name": "caller",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "proposalId",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "buildTransfer",
+      "parameters": [
+        {
+          "name": "from",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "amount",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "buildApprove",
+      "parameters": [
+        {
+          "name": "owner",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "spender",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "amount",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "expirationLedger",
+          "type": "number",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    },
+    {
+      "name": "buildTransferFrom",
+      "parameters": [
+        {
+          "name": "spender",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "from",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "to",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "amount",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<string>"
+    }
+  ],
+  "errors": {
+    "GovernanceError": {
+      "AlreadyInitialized": 1,
+      "Unauthorized": 2,
+      "ProposalNotFound": 3,
+      "VotingNotActive": 4,
+      "AlreadyVoted": 5,
+      "QuorumNotReached": 6,
+      "ProposalNotPassed": 7,
+      "AlreadyExecuted": 8,
+      "BelowProposalThreshold": 9,
+      "InvalidVoteChoice": 10,
+      "VotingPeriodEnded": 11,
+      "TimelockNotExpired": 12,
+      "Overflow": 13,
+      "NoVotingPower": 14,
+      "ExecutionExpired": 15,
+      "ContractPaused": 16,
+      "InvalidQuorumBps": 17,
+      "NotInitialized": 18,
+      "EmptyTitle": 19,
+      "TitleTooLong": 20,
+      "DescriptionTooLong": 21,
+      "MinimumQuorumRequired": 22,
+      "MinimumTimelockRequired": 23,
+      "EmptyVetoReason": 24,
+      "VetoReasonTooLong": 25,
+      "VetoWindowClosed": 26,
+      "TargetNotAllowed": 27,
+      "InvalidCosponsors": 28,
+      "InvalidAmount": 29,
+      "InsufficientDeposit": 30,
+      "NotExecutable": 31,
+      "ProposalNotCancellable": 32,
+      "ProposerOnCooldown": 33,
+      "VotingNotStarted": 34
+    },
+    "TokenError": {
+      "AlreadyInitialized": 1,
+      "Unauthorized": 2,
+      "InsufficientBalance": 3,
+      "InsufficientAllowance": 4,
+      "InvalidAmount": 5,
+      "Overflow": 6,
+      "InvalidExpiration": 7,
+      "InvalidSupply": 8,
+      "InvalidDecimals": 9
+    }
+  }
+}

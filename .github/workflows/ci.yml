@@ -186,6 +186,11 @@ jobs:
       - name: Lint
         run: cd sdk && npm run lint
       - run: cd sdk && npm run build
+      # Issue #275: fails when spec/quorum-client.spec.json no longer matches
+      # QuorumClient's public methods or the error enums, or when the README
+      # documents a client method the spec does not list.
+      - name: Client spec is current
+        run: cd sdk && npm run spec:check
       # Issue #125: require() and import must both resolve through the
       # exports map, and the Freighter helper must stay out of the root entry.
       - name: Smoke test (ESM + CJS)
