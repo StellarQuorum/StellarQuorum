@@ -7,6 +7,8 @@ import VoteButtons from "@/components/VoteButtons";
 import VotingPowerPreview from "@/components/VotingPowerPreview";
 import AddToCalendar from "@/components/AddToCalendar";
 import PrintButton from "@/components/PrintButton";
+import ShareButtons from "@/components/ShareButtons";
+import { getEnv } from "@/lib/env";
 import { formatDate, t } from "@/lib/i18n";
 
 export default async function ProposalDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -44,6 +46,13 @@ export default async function ProposalDetailPage({ params }: { params: Promise<{
           <span className="flex items-center gap-1.5"><User size={13} /> {proposal.proposer}</span>
           <span className="flex items-center gap-1.5"><Clock size={13} /> {t("proposals.votingDates", { start: formatDate(proposal.startTime), end: formatDate(proposal.endTime) })}</span>
           <AddToCalendar proposal={proposal} />
+        </div>
+        <div className="mt-4">
+          <ShareButtons
+            id={proposal.id}
+            title={proposal.title}
+            url={`${getEnv().siteUrl}/proposals/${encodeURIComponent(proposal.id)}`}
+          />
         </div>
       </div>
 
