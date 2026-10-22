@@ -1,0 +1,73 @@
+name: Renovate
+
+# Issue #301: Renovate replaces the Dependabot configuration that used to live
+# in .github/dependabot.yml (removed in the same change). The comparison and
+# the reasoning behind the switch are in docs/dependency-updates.md.
+#
+# The schedule below has to match the `schedule` in renovate.json: Renovate
+# decides when to open pull requests from its own configuration, this workflow
+# only decides when Renovate *runs*.
+on:
+  schedule:
+    # Monday, 04:00 UTC. The "*" character has special meaning in YAML, so the
+    # cron string is quoted.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: renovate-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # Renovate pushes branches and opens pull requests.
+      contents: write
+      pull-requests: write
+      # The dependency dashboard is an issue.
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Renovate's own cache. Restoring it keeps the run inside the API rate
+      # limit and makes lookups noticeably faster; the ownership fix is
+      # required because the Renovate container runs as uid 12021 while the
+      # cache is restored as the runner user.
+      - name: Restore Renovate cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/renovate/cache/renovate/repository
+          key: renovate-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            renovate-cache-
+      - name: Fix restored cache ownership
+        if: steps.cache-restore.outputs.cache-matched-key != ''
+        run: sudo chown -R 12021:0 /tmp/renovate/
+
+      - name: Run Renovate
+        uses: renovatebot/github-action@v46.3.9
+        with:
+          # A PAT with `repo` and `workflow` scopes is preferred: the default
+          # GITHUB_TOKEN cannot update workflow files, and pull requests it
+          # opens do not trigger CI on their own. See docs/dependency-updates.md.
+          token: ${{ secrets.RENOVATE_TOKEN || github.token }}
+        env:
+          RENOVATE_REPOSITORY_CACHE: enabled
+          LOG_LEVEL: info
+
+      - name: Save Renovate cache
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/renovate/cache/renovate/repository
+          key: renovate-cache-${{ github.run_id }}-${{ github.run_attempt }}

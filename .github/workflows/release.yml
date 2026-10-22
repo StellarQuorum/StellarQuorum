@@ -111,6 +111,40 @@ jobs:
         with:
           name: contract-specs
           path: specs/*.spec.json
+      # Issue #302: publish a CycloneDX SBOM next to the released contracts,
+      # so a downstream integrator can list every crate that ends up inside
+      # the .wasm artifacts they run. Only the lockfile is handed to Syft: it
+      # is the exact dependency set the release build resolves, and scanning
+      # contracts/ directly would also walk contracts/target (compiler
+      # output) and contracts/fuzz (a separate workspace whose dev-dependencies
+      # are not part of the released WASM).
+      - name: Prepare the contract SBOM input
+        run: |
+          mkdir -p sbom .sbom-input/contracts
+          cp contracts/Cargo.lock .sbom-input/contracts/Cargo.lock
+      - name: Generate contract SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .sbom-input/contracts
+          format: cyclonedx-json
+          output-file: sbom/quorum-contracts.cdx.json
+          config: .syft.yaml
+          # Uploaded below, after the artifacts have been added to the
+          # document, and attached to the release by the create-release job.
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.55.0
+      - name: Record the WASM artifacts in the SBOM
+        run: |
+          node scripts/sbom-add-artifacts.mjs \
+            sbom/quorum-contracts.cdx.json \
+            contracts/target/wasm32-unknown-unknown/release/quorum_token.wasm \
+            contracts/target/wasm32-unknown-unknown/release/quorum_governance.wasm
+      - name: Upload contract SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-sbom
+          path: sbom/quorum-contracts.cdx.json
 
   build-sdk:
     name: Build SDK
@@ -137,6 +171,31 @@ jobs:
         with:
           name: sdk-dist
           path: sdk/dist
+      # Issue #302: the same SBOM treatment for the npm package. Only the
+      # manifest and the lockfile are handed to Syft, so the document lists
+      # the published package's dependency tree and not the contents of
+      # node_modules. .syft.yaml turns on dev-dependencies, which covers the
+      # toolchain that produced the published tarball as well as its runtime
+      # dependency — the conservative choice for a supply-chain review.
+      - name: Prepare the SDK SBOM input
+        run: |
+          mkdir -p sbom .sbom-input/sdk
+          cp sdk/package.json sdk/package-lock.json .sbom-input/sdk/
+      - name: Generate SDK SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .sbom-input/sdk
+          format: cyclonedx-json
+          output-file: sbom/quorum-sdk.cdx.json
+          config: .syft.yaml
+          upload-artifact: false
+          upload-release-assets: false
+          syft-version: v1.55.0
+      - name: Upload SDK SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-sbom
+          path: sbom/quorum-sdk.cdx.json
 
   build-frontend:
     name: Build frontend
@@ -200,6 +259,7 @@ jobs:
           echo "- Contract WASM: \`quorum_token.wasm\`, \`quorum_governance.wasm\`" >> notes.md
           echo "- Contract specs: \`quorum-token.spec.json\`, \`quorum-governance.spec.json\`" >> notes.md
           echo "- SDK: \`@quorum/sdk@${{ needs.validate-tag.outputs.version }}\`" >> notes.md
+          echo "- SBOMs: \`quorum-contracts.cdx.json\`, \`quorum-sdk.cdx.json\` (CycloneDX)" >> notes.md
           
           # Read and output
           CONTENT=$(cat notes.md)
@@ -236,6 +296,16 @@ jobs:
         with:
           name: frontend-dist
           path: artifacts/frontend
+      - name: Download contract SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: contract-sbom
+          path: artifacts/sbom/contracts
+      - name: Download SDK SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-sbom
+          path: artifacts/sbom/sdk
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -247,6 +317,8 @@ jobs:
             --notes "$NOTES" \
             artifacts/wasm/*.wasm \
             artifacts/specs/*.json \
+            artifacts/sbom/contracts/*.json \
+            artifacts/sbom/sdk/*.json \
             --repo ${{ github.repository }}
 
   publish-sdk:

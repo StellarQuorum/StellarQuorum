@@ -1,0 +1,15 @@
+# Syft configuration for the release SBOMs (issue #302).
+#
+# The release workflow generates a CycloneDX document for the published
+# artifacts — the contract WASM and the `@quorum/sdk` npm package — with Syft.
+# See docs/publishing.md for how to reproduce one locally.
+#
+# Syft reads this file automatically when it runs in the repository root, and
+# the release workflow passes it explicitly so the SBOM is generated the same
+# way locally and in CI.
+javascript:
+  # List the dev-dependencies as well as the runtime dependency of the
+  # published npm package. The packages an integrator's security review cares
+  # about include the toolchain that produced the tarball, and listing them
+  # is the conservative choice.
+  include-dev-dependencies: true

@@ -1,0 +1,100 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  "extends": [
+    "config:recommended",
+    ":semanticCommits"
+  ],
+
+  "timezone": "UTC",
+  "schedule": ["before 4am on monday"],
+
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+
+  "branchPrefix": "renovate/",
+  "labels": ["dependencies"],
+
+  "dependencyDashboard": true,
+
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 4am on monday"],
+    "groupName": "lock files"
+  },
+
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["at any time"],
+    "prCreation": "immediate",
+    "minimumReleaseAge": null
+  },
+
+  "packageRules": [
+    {
+      "description": "The root package.json declares no dependencies and has no lockfile. Leaving it enabled would make Renovate create a package-lock.json for it on the first run.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["package.json"],
+      "enabled": false
+    },
+    {
+      "description": "Every dependency update is a chore, and the conventional-commit scope falls back to `deps` for anything not covered by a more specific rule below.",
+      "matchPackageNames": ["*"],
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Non-major SDK npm dependencies land in one reviewable PR.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["sdk/package.json"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "groupName": "sdk dependencies",
+      "semanticCommitScope": "sdk"
+    },
+    {
+      "description": "Non-major frontend npm dependencies land in one reviewable PR.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["frontend/package.json"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "groupName": "frontend dependencies",
+      "semanticCommitScope": "frontend"
+    },
+    {
+      "description": "All @stellar/* packages are bumped together. A stellar-sdk major release changes the wire format the SDK builds against, so it gets its own PR; everything below a major moves as one batch.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@stellar/*"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "groupName": "stellar packages",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Rust crates used by the contracts.",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "groupName": "cargo dependencies",
+      "semanticCommitScope": "contracts"
+    },
+    {
+      "description": "Python SDK dependencies (stellar-sdk and pytest). The poetry manager supersedes pep621 for pyproject.toml, so both names are listed.",
+      "matchManagers": ["pep621", "poetry"],
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "groupName": "python dependencies",
+      "semanticCommitScope": "sdk"
+    },
+    {
+      "description": "GitHub Actions pins move monthly rather than weekly: a new action major release is usually a runtime change that deserves its own review.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "schedule": ["before 4am on the 1st day of the month"],
+      "semanticCommitScope": "ci"
+    },
+    {
+      "description": "Container base images (devcontainer, Dockerfile, docker compose) move monthly.",
+      "matchManagers": ["dockerfile", "devcontainer", "docker-compose"],
+      "groupName": "container images",
+      "schedule": ["before 4am on the 1st day of the month"],
+      "semanticCommitScope": "ci"
+    }
+  ]
+}

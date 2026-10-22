@@ -56,6 +56,20 @@ are marked **BREAKING** below.
 
 ### Added
 
+- CI: a devcontainer (`.devcontainer/`) installs Node 20, Rust stable with the
+  `wasm32-unknown-unknown` target, clippy/rustfmt and the Stellar CLI, then
+  installs the workspace dependencies, so a contributor can open the repo in
+  Codespaces or VS Code and start working without a manual toolchain setup.
+  Docker-in-docker is enabled, so the local Soroban network can be started from
+  inside the container with `docker compose up -d`. (#299)
+- Scripts: `scripts/seed-demo-proposals.mjs` deploys both contracts, funds three
+  throwaway accounts and drives four proposals into the Active, Queued, Failed
+  and Executed states, so the frontend can be tried against real governance
+  data. Every run creates fresh data. (#300)
+- Release: every tagged release now ships a CycloneDX SBOM for the contracts and
+  one for the SDK. Both are generated with Syft and the contract SBOM is
+  enriched with the published WASM artifacts, which Syft cannot catalogue on
+  its own. (#302)
 - **Governance:** `set_guardian` lets the admin replace the veto guardian and
   emits `guardian_changed`; `get_proposal_actions` returns a proposal's actions. (2026-10-21)
 - **Frontend:** the proposal detail page refreshes vote counts every 10 seconds
@@ -133,6 +147,11 @@ are marked **BREAKING** below.
 
 ### Changed
 
+- CI: dependency updates are handled by Renovate instead of Dependabot. The
+  Dependabot config is removed, and `renovate.json` plus a `Renovate` workflow
+  cover the Cargo, npm, Docker, GitHub Actions and Python dependencies. The
+  comparison and the decision are recorded in `docs/dependency-updates.md`.
+  (#301)
 - Governance: `quorum_required` is computed from the token's `total_supply` as
   `total_supply * quorum_bps / 10000` and frozen into the proposal at creation.
   Previously it was hardcoded to `0`, so any single vote satisfied quorum.
@@ -146,6 +165,10 @@ are marked **BREAKING** below.
 
 ### Fixed
 
+- Docs: the local-network deploy snippet in `CONTRIBUTING.md` pointed at
+  `target/.../governance.wasm` and `target/.../token.wasm`. The build writes
+  `contracts/target/wasm32-unknown-unknown/release/quorum_governance.wasm` and
+  `quorum_token.wasm`. (#300)
 - **Governance:** `finalize()` rejects a proposal that is no longer `Active`.
   Before, calling it again could move a vetoed, cancelled or executed proposal
   back to `Queued`, letting it execute. (2026-10-21)

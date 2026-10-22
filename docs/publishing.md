@@ -72,6 +72,7 @@ The [release workflow](../.github/workflows/release.yml) will:
 
 - Build and test contracts
 - Generate contract WASM artifacts and specs
+- Generate CycloneDX SBOMs for the contracts and the SDK
 - Build and test SDK
 - Build frontend
 - Generate release notes from commit history
@@ -85,7 +86,67 @@ The [release workflow](../.github/workflows/release.yml) will:
 | Contracts | `quorum_token.wasm`, `quorum_governance.wasm` |
 | Specs | `quorum-token.spec.json`, `quorum-governance.spec.json` |
 | SDK | `@quorum/sdk@X.Y.Z` on npm |
+| SBOMs | `quorum-contracts.cdx.json`, `quorum-sdk.cdx.json` |
 | Frontend | Built as part of CI (not published separately) |
+
+## Software Bill of Materials
+
+Every tagged release ships a [CycloneDX](https://cyclonedx.org/) SBOM for each
+published artifact, so a downstream integrator can list everything that goes
+into the code they run:
+
+| SBOM | Covers | Generated from |
+|------|--------|----------------|
+| `quorum-contracts.cdx.json` | The crates in `contracts/Cargo.lock`, plus both released `.wasm` artifacts with their SHA-256 | `contracts/Cargo.lock` |
+| `quorum-sdk.cdx.json` | The npm packages in `sdk/package-lock.json`, runtime and dev | `sdk/package-lock.json` |
+
+Both are attached to the GitHub release next to the WASM and spec artifacts:
+
+```bash
+gh release download v0.2.0 --pattern '*.cdx.json'
+```
+
+The contract SBOM also lists `quorum_token.wasm` and `quorum_governance.wasm`
+as components with their SHA-256, so an integrator can check that the `.wasm`
+they downloaded is the one the dependency list was generated for. A compiled
+Soroban contract carries no package metadata of its own, which is why the
+release workflow adds them explicitly with
+[`scripts/sbom-add-artifacts.mjs`](../scripts/sbom-add-artifacts.mjs).
+
+The npm SBOM lists dev-dependencies as well as the runtime dependency
+([`.syft.yaml`](../.syft.yaml) sets `include-dev-dependencies`): the
+toolchain that produced the published tarball is part of its supply chain.
+
+### Generating an SBOM locally
+
+[Syft](https://github.com/anchore/syft) produces both documents:
+
+```bash
+# Install Syft (https://github.com/anchore/syft#installation)
+#   curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+#     | sh -s -- -b /usr/local/bin
+
+# The contract SBOM
+mkdir -p sbom .sbom-input/contracts
+cp contracts/Cargo.lock .sbom-input/contracts/Cargo.lock
+syft scan dir:.sbom-input/contracts -o cyclonedx-json -c .syft.yaml \
+  > sbom/quorum-contracts.cdx.json
+node scripts/sbom-add-artifacts.mjs \
+  sbom/quorum-contracts.cdx.json \
+  contracts/target/wasm32-unknown-unknown/release/quorum_token.wasm \
+  contracts/target/wasm32-unknown-unknown/release/quorum_governance.wasm
+
+# The SDK SBOM
+mkdir -p .sbom-input/sdk
+cp sdk/package.json sdk/package-lock.json .sbom-input/sdk/
+syft scan dir:.sbom-input/sdk -o cyclonedx-json -c .syft.yaml \
+  > sbom/quorum-sdk.cdx.json
+```
+
+`-c .syft.yaml` points Syft at the repository's
+[`.syft.yaml`](../.syft.yaml) configuration. Syft also picks that file up
+automatically when it runs in the repository root; the release workflow passes
+it explicitly so a local run matches CI.
 
 ## Verification
 
