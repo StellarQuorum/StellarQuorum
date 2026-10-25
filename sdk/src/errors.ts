@@ -40,6 +40,10 @@ export enum GovernanceError {
   ProposalNotCancellable = 32,
   ProposerOnCooldown = 33,
   VotingNotStarted = 34,
+  TooManyActions = 35,
+  ActionFailed = 36,
+  InvalidMaxActiveProposals = 37,
+  TooManyActiveProposals = 38,
 }
 
 /** Mirror of `TokenError` in contracts/token/src/lib.rs. Same rules as above. */

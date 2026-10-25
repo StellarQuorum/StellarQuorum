@@ -254,6 +254,10 @@ try { /* ... */ } catch (e) {
 
 `sdk/spec/quorum-client.spec.json` describes every public `QuorumClient` method (parameters, types, return types) and the `GovernanceError` and `TokenError` codes, for bindings and docs in other languages. It is generated from `sdk/src` by `npm run spec` in `sdk/`. CI runs `npm run spec:check` and fails if the file has drifted from the source.
 
+The generated [SDK API reference](sdk/docs/api-reference.md) lists the public
+exports and their source files. Run `npm run docs` in `sdk/` to regenerate it;
+CI checks that it stays current.
+
 ### Releases
 
 `@quorum/sdk` releases are tagged `sdk-vX.Y.Z` and published to npm by CI with

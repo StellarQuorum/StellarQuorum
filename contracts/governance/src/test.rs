@@ -333,6 +333,10 @@ fn initialize_stores_the_supplied_config() {
         GovernanceContractClient::new(&env, &governance_id).get_proposal_count(),
         0
     );
+    assert_eq!(
+        GovernanceContractClient::new(&env, &governance_id).get_config().max_active_proposals,
+        DEFAULT_MAX_ACTIVE_PROPOSALS
+    );
 }
 
 #[test]
@@ -426,6 +430,56 @@ fn proposal_ids_increment_from_one() {
         assert_eq!(propose(&env, &governance_id, &admin).id, expected);
     }
     assert_eq!(governance.get_proposal_count(), 3);
+}
+
+#[test]
+fn active_proposal_limit_is_enforced_and_freed_after_finalize() {
+    let env = Env::default();
+    let (admin, governance_id, first) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    governance.set_max_active_proposals(&1);
+
+    assert_eq!(
+        governance.try_create_proposal(&admin, &String::from_str(&env, "blocked"), &String::from_str(&env, "blocked"), &String::from_str(&env, "")),
+        Err(Ok(GovernanceError::TooManyActiveProposals))
+    );
+    close_voting(&env, &governance, first);
+    governance.finalize(&first);
+    assert!(governance.try_create_proposal(&admin, &String::from_str(&env, "available"), &String::from_str(&env, "available"), &String::from_str(&env, "")).is_ok());
+}
+
+#[test]
+fn active_proposal_limit_is_freed_after_cancel() {
+    let env = Env::default();
+    let (admin, governance_id, first) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    governance.set_max_active_proposals(&1);
+    governance.cancel(&admin, &first);
+    assert!(governance.try_create_proposal(&admin, &String::from_str(&env, "available"), &String::from_str(&env, "available"), &String::from_str(&env, "")).is_ok());
+}
+
+#[test]
+fn active_proposal_index_tracks_creation_and_finalization() {
+    let env = Env::default();
+    let (admin, governance_id, first) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let second = propose(&env, &governance_id, &admin).id;
+    assert_eq!(governance.get_active_proposals(), soroban_sdk::vec![&env, first, second]);
+
+    close_voting(&env, &governance, first);
+    governance.finalize(&first);
+    assert_eq!(governance.get_active_proposals(), soroban_sdk::vec![&env, second]);
+}
+
+#[test]
+fn active_proposal_index_removes_cancelled_proposals() {
+    let env = Env::default();
+    let (admin, governance_id, first) = open_with_holders(&env, 1_000_000, QUORUM_BPS, &[]);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let second = propose(&env, &governance_id, &admin).id;
+
+    governance.cancel(&admin, &first);
+    assert_eq!(governance.get_active_proposals(), soroban_sdk::vec![&env, second]);
 }
 
 #[test]

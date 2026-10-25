@@ -30,6 +30,25 @@ network. `tokenContractId` is optional when only governance methods are used.
 Both module systems are supported — `import` resolves the ESM build,
 `require()` the CommonJS build, and TypeScript picks up the matching types.
 
+### React hooks
+
+React applications can use the optional hooks entry point:
+
+```bash
+npm install @quorum/sdk react
+```
+
+```typescript
+import { useProposal, useProposals, useVote } from '@quorum/sdk/react';
+
+const proposal = useProposal(client, 1n);
+const proposals = useProposals(client, { limit: 20 });
+const vote = useVote(client, 1n, walletAddress);
+```
+
+Each hook returns `data`, `isLoading`, `error`, and `refetch`; `loading` is
+provided as an alias. React remains optional unless this entry point is used.
+
 ### Signing with Freighter
 
 The wallet helper lives behind an optional entry point so Node consumers never
@@ -184,6 +203,10 @@ cache. After submitting a write, invalidate the affected reads or bypass the
 cache when immediate freshness matters; no write automatically clears it.
 
 ## Contributor notes
+
+See the generated [API reference](docs/api-reference.md) for the public SDK
+exports. Regenerate it with `npm run docs` and verify it with
+`npm run docs:check`.
 
 Run `npm ci`, `npm run build`, and `npm run test:browser` in `sdk/` to
 check browser compatibility. CI bundles the emitted ESM entry with esbuild's

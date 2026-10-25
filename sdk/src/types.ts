@@ -27,6 +27,7 @@ export interface GovernanceConfig {
   timelockPeriod: number;
   proposalThreshold: bigint;
   admin: string;
+  maxActiveProposals: number;
 }
 
 export interface QuorumClientConfig {

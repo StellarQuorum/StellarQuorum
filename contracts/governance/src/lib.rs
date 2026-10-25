@@ -62,6 +62,8 @@ pub enum GovernanceError {
     VotingNotStarted        = 34,
     TooManyActions          = 35,
     ActionFailed            = 36,
+    InvalidMaxActiveProposals = 37,
+    TooManyActiveProposals  = 38,
 }
 
 /// Basis-point denominator: `quorum_bps` of 500 means 5% of total supply.
@@ -105,6 +107,10 @@ const MAX_VETO_REASON_LENGTH: u32 = 1_000;
 /// Maximum number of actions one proposal may carry. Bounds the work and
 /// resources `execute()` spends dispatching them.
 const MAX_PROPOSAL_ACTIONS: u32 = 10;
+
+/// Default bound for the active proposal index. Admins may lower or raise it
+/// while keeping the current active set within the configured limit.
+pub const DEFAULT_MAX_ACTIVE_PROPOSALS: u32 = 25;
 
 /// Ledgers in roughly one day, at Stellar's ~5 second close time.
 const LEDGERS_PER_DAY: u32 = 17_280;
@@ -401,12 +407,14 @@ pub struct Config {
     pub paused: bool,
     pub proposal_deposit: i128,
     pub proposer_cooldown: u32,
+    pub max_active_proposals: u32,
 }
 
 #[contracttype]
 pub enum DataKey {
     Config,
     ProposalCount,
+    ActiveProposals,
     Proposal(u64),
     HasVoted(u64, Address),
     Delegate(Address),
@@ -450,7 +458,7 @@ impl GovernanceContract {
             return Err(GovernanceError::MinimumTimelockRequired);
         }
         admin.require_auth();
-        let config = Config { token: token.clone(), quorum_bps, voting_period, timelock_period, proposal_threshold, admin: admin.clone(), guardian: guardian.clone(), execution_grace_period, paused: false, proposal_deposit: 0, proposer_cooldown: 0 };
+        let config = Config { token: token.clone(), quorum_bps, voting_period, timelock_period, proposal_threshold, admin: admin.clone(), guardian: guardian.clone(), execution_grace_period, paused: false, proposal_deposit: 0, proposer_cooldown: 0, max_active_proposals: DEFAULT_MAX_ACTIVE_PROPOSALS };
         env.storage().instance().set(&DataKey::Config, &config);
         env.storage().instance().set(&DataKey::ProposalCount, &0u64);
 
@@ -655,6 +663,7 @@ impl GovernanceContract {
         } else { ProposalStatus::Failed };
         let status = proposal.status.clone();
         env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        Self::remove_active_proposal(&env, proposal_id);
         Self::touch_proposal(&env, proposal_id);
         Self::record_status_change(&env, &previous, &status);
 
@@ -693,6 +702,11 @@ impl GovernanceContract {
         // Check if contract is paused
         if config.paused {
             return Err(GovernanceError::ContractPaused);
+        }
+
+        let active = env.storage().persistent().get::<DataKey, soroban_sdk::Vec<u64>>(&DataKey::ActiveProposals).unwrap_or_else(|| soroban_sdk::Vec::new(env));
+        if active.len() >= config.max_active_proposals {
+            return Err(GovernanceError::TooManyActiveProposals);
         }
 
         let mut proposal: Proposal = env.storage().persistent()
@@ -779,6 +793,18 @@ impl GovernanceContract {
 
     pub fn get_proposal_count(env: Env) -> u64 {
         env.storage().instance().get(&DataKey::ProposalCount).unwrap_or(0)
+    }
+
+    /// Returns the IDs of proposals currently in the Active voting state.
+    /// The list is maintained on create, finalize, and cancel, so callers do
+    /// not need to fetch and filter the full proposal history.
+    pub fn get_active_proposals(env: Env) -> soroban_sdk::Vec<u64> {
+        let key = DataKey::ActiveProposals;
+        let active = env.storage().persistent().get(&key).unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+        if env.storage().persistent().has(&key) {
+            Self::touch_persistent(&env, &key);
+        }
+        active
     }
 
     /// Returns a paginated list of proposals.
@@ -935,6 +961,21 @@ impl GovernanceContract {
         Ok(())
     }
 
+    /// Sets the maximum number of concurrently Active proposals. Admin only;
+    /// the limit cannot be lowered below the current active set.
+    pub fn set_max_active_proposals(env: Env, max: u32) -> Result<(), GovernanceError> {
+        let mut config: Config = Self::require_config(&env)?;
+        config.admin.require_auth();
+        let active = env.storage().persistent().get::<DataKey, soroban_sdk::Vec<u64>>(&DataKey::ActiveProposals).unwrap_or_else(|| soroban_sdk::Vec::new(&env));
+        if max == 0 || max < active.len() {
+            return Err(GovernanceError::InvalidMaxActiveProposals);
+        }
+        config.max_active_proposals = max;
+        env.storage().instance().set(&DataKey::Config, &config);
+        Self::touch_instance(&env);
+        Ok(())
+    }
+
     /// Replaces the guardian that may veto queued proposals. Admin only. Takes
     /// effect at once, so a compromised guardian can be rotated out mid-timelock.
     pub fn set_guardian(env: Env, new_guardian: Address) -> Result<(), GovernanceError> {
@@ -1045,6 +1086,7 @@ impl GovernanceContract {
         }
         proposal.status = ProposalStatus::Cancelled;
         env.storage().persistent().set(&DataKey::Proposal(proposal_id), &proposal);
+        Self::remove_active_proposal(&env, proposal_id);
         Self::touch_proposal(&env, proposal_id);
         // A cancelled proposal forfeits any deposit it still holds. One that
         // already passed had its deposit refunded at queueing, so nothing is left.
@@ -1302,6 +1344,7 @@ impl GovernanceContract {
         };
         env.storage().persistent().set(&DataKey::Proposal(id), &proposal);
         env.storage().instance().set(&DataKey::ProposalCount, &id);
+        Self::add_active_proposal(env, id);
 
         if config.proposal_deposit > 0 {
             token.transfer(&proposer, &env.current_contract_address(), &config.proposal_deposit);
@@ -1470,6 +1513,24 @@ impl GovernanceContract {
     /// Extends the TTL of a persistent entry that the helpers above do not cover.
     fn touch_persistent(env: &Env, key: &DataKey) {
         env.storage().persistent().extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+    }
+
+    fn add_active_proposal(env: &Env, id: u64) {
+        let key = DataKey::ActiveProposals;
+        let mut active = env.storage().persistent().get(&key).unwrap_or_else(|| soroban_sdk::Vec::new(env));
+        active.push_back(id);
+        env.storage().persistent().set(&key, &active);
+        Self::touch_persistent(env, &key);
+    }
+
+    fn remove_active_proposal(env: &Env, id: u64) {
+        let key = DataKey::ActiveProposals;
+        let Some(mut active) = env.storage().persistent().get::<DataKey, soroban_sdk::Vec<u64>>(&key) else { return; };
+        if let Some(index) = active.first_index_of(id) {
+            active.remove(index);
+            env.storage().persistent().set(&key, &active);
+            Self::touch_persistent(env, &key);
+        }
     }
 
     /// Extends the TTL of instance storage, which holds Config and the proposal

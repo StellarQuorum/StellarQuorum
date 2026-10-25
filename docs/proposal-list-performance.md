@@ -1,5 +1,12 @@
 # Proposal list read path — load test
 
+The governance contract also exposes `get_active_proposals()`, a maintained
+proposal-id index for the open voting set. It is updated when proposals are
+created, finalized, or cancelled, and its persistent entry is refreshed with
+the same 30-day minimum / 90-day extension policy used by proposal records.
+The index is intentionally bounded by the configurable concurrent-proposal
+limit, so its response size grows with open work rather than total history.
+
 Issue #170. Measures how long `getAllProposals()` takes to read 50, 200 and
 1000 proposals, and uses that to recommend a page size for the list screen.
 

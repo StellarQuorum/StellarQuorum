@@ -191,6 +191,9 @@ jobs:
       # documents a client method the spec does not list.
       - name: Client spec is current
         run: cd sdk && npm run spec:check
+      # Issue #270: keep the committed SDK API reference generated from source.
+      - name: API reference is current
+        run: cd sdk && npm run docs:check
       # Issue #125: require() and import must both resolve through the
       # exports map, and the Freighter helper must stay out of the root entry.
       - name: Smoke test (ESM + CJS)

@@ -225,6 +225,7 @@ export class QuorumClient {
         timelockPeriod: raw.timelock_period,
         proposalThreshold: raw.proposal_threshold,
         admin: raw.admin,
+        maxActiveProposals: raw.max_active_proposals,
       };
     });
   }
@@ -865,6 +866,7 @@ interface RawConfig {
   timelock_period: number;
   proposal_threshold: bigint;
   admin: string;
+  max_active_proposals: number;
 }
 
 function decodeProposal(raw: RawProposal): Proposal {
