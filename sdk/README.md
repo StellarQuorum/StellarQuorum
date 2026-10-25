@@ -1,5 +1,10 @@
 # @quorum/sdk
 
+The CI bundle budget checks the minified ESM entry points after gzip: the root
+entry is capped at 25 KiB and the optional `freighter` entry at 35 KiB. The
+separate budget keeps wallet-only dependencies from leaking into Node users'
+initial bundle.
+
 TypeScript SDK for the Quorum governance protocol on Stellar/Soroban: read
 proposals and config through `QuorumClient`, build transactions, sign them
 with Freighter, and decode the events both contracts emit.
@@ -98,6 +103,17 @@ Covers `proposal_created`, `vote_cast`, `proposal_finalized`,
 `null` instead of throwing.
 
 ## Python read-only bindings
+
+## Command-line governance tool
+
+The `sdk/cli` package provides `@quorum/cli` commands for testnet, futurenet,
+mainnet, or a custom RPC. Set `QUORUM_GOVERNANCE_CONTRACT_ID` and
+`QUORUM_SECRET_KEY`, then run `npx @quorum/cli propose --title "..."
+--description "..."`, `vote --id 1 --support 1`, `finalize --id 1`,
+`execute --id 1`, or `get --id 1`. Use `--network custom --rpc-url ...
+--network-passphrase ...` for a private network. The secret key is read only
+for local signing and this CLI is not a mainnet custody solution; use a secure
+wallet or signer for production funds.
 
 Python services can install the governance query package from source. See
 [the Python SDK README](python/README.md) for installation, typed result
