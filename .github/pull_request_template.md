@@ -26,6 +26,16 @@ Closes #
 <!-- Paste test execution output, build logs, or add screenshots for UI changes -->
 ```
 
+## Smart Contract Security Review (when `contracts/` changes)
+
+- [ ] Privileged state changes use `require_auth()` for the correct signer; intentionally permissionless entry points are documented.
+- [ ] State changes emit the appropriate events, including relevant identifiers and updated values.
+- [ ] Arithmetic involving balances, votes, quorum, and ledger offsets is checked for overflow/underflow.
+- [ ] Contract instance and persistent-storage TTL extension/expiry behavior has been reviewed.
+- [ ] SDK bindings, parameter types, and contract error mappings stay synchronized with contract changes.
+- [ ] The release WASM size has been checked against the project's size budget.
+- [ ] Applicable authorization and boundary tests were run; any not-applicable items are explained below.
+
 ## Checklist
 
 - [ ] Code follows the project conventions and style guidelines
