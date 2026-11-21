@@ -55,7 +55,9 @@ Governance depends on three token functions (the `TokenInterface` trait in
 | `create_proposal` | `total_supply()` | Derives `quorum_required = total_supply * quorum_bps / 10000` (checked multiply, integer division), frozen into the proposal at creation. Mints or burns during voting do not move the bar. |
 | `vote` | `get_past_votes(voter, proposal.snapshot_ledger)` | The voter's weight. A result of 0 or less is rejected with `NoVotingPower`. |
 
-`finalize`, `execute`, `cancel` and the view functions make no token calls.
+`finalize`, `execute` and the view functions make no token calls. `cancel`
+makes no token read; it refunds or burns the deposit already recorded for the
+proposal.
 
 ## Proposal lifecycle
 
@@ -76,9 +78,10 @@ Governance depends on three token functions (the `TokenInterface` trait in
 - **execute** — requires `Queued` and `ledger >= queue_ledger`
   (`TimelockNotExpired` before that). It marks the proposal `Executed`; the
   dispatch of on-chain actions is still a `TODO` in the contract.
-- **cancel** — the proposer or the admin may cancel (`Unauthorized` for anyone
-  else), and only while the proposal is `Active` and its voting window is open
-  (`ProposalNotCancellable` otherwise).
+- **cancel** — only the proposer may cancel (`Unauthorized` for anyone else,
+  including the admin), and only while the proposal is `Active` and its voting
+  window is open (`ProposalNotCancellable` otherwise). The deposit is refunded
+  if voting has not started and burned otherwise.
 
 `ProposalStatus` stores only the states the contract enters. `Pending` (before
 voting opens) and `Passed` are reported by `get_proposal_phase`, not stored.
@@ -393,8 +396,8 @@ topic tuple (a symbol first, then identifiers) and a struct payload.
 | `("proposal_cancelled", id)` | `ProposalCancelled { id, caller }` | `cancel` |
 | `("proposal_expired", id)` | `ProposalExpired { id }` | `mark_expired` |
 | `("proposal_deposit_updated")` | `ProposalDepositUpdated { amount }` | `set_proposal_deposit` |
-| `("deposit_refunded", id)` | `DepositRefunded { id, proposer, amount }` | `finalize`, when the proposal passes |
-| `("deposit_forfeited", id)` | `DepositForfeited { id, amount }` | `finalize`, when the proposal fails; `cancel` |
+| `("deposit_refunded", id)` | `DepositRefunded { id, proposer, amount }` | `finalize`, when the proposal passes; `cancel`, before voting starts |
+| `("deposit_forfeited", id)` | `DepositForfeited { id, amount }` | `finalize`, when the proposal fails; `cancel`, once voting is open |
 | `("target_allowlist_updated", target)` | `TargetAllowlistUpdated { admin, target, allowed }` | `allow_target`, `disallow_target` |
 | `("proposal_action_set", id)` | `ProposalActionSet { id, target, function }` | `set_proposal_action` |
 

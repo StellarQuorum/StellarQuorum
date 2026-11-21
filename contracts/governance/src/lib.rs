@@ -1210,16 +1210,21 @@ impl GovernanceContract {
     }
 
     /// Cancels a proposal while its voting window is still open. Only the
-    /// proposer or the admin may cancel, and only an `Active` proposal that has
-    /// not passed its `end_ledger`. Anything else, including a proposal that is
-    /// already executed, queued, failed or cancelled, fails with
+    /// proposer may cancel, and only an `Active` proposal that has not passed
+    /// its `end_ledger`. Anything else, including a proposal that is already
+    /// executed, queued, failed or cancelled, fails with
     /// `ProposalNotCancellable`.
+    ///
+    /// The admin has no unilateral cancellation power (#425). A single admin
+    /// key could otherwise silence any proposal and burn its proposer's
+    /// deposit, bypassing the guardian. Emergency controls remain the guardian
+    /// veto on queued proposals and `pause()`.
     pub fn cancel(env: Env, caller: Address, proposal_id: u64) -> Result<(), GovernanceError> {
         let config: Config = Self::require_config(&env)?;
         caller.require_auth();
         let mut proposal: Proposal = env.storage().persistent()
             .get(&DataKey::Proposal(proposal_id)).ok_or(GovernanceError::ProposalNotFound)?;
-        if caller != proposal.proposer && caller != config.admin {
+        if caller != proposal.proposer {
             return Err(GovernanceError::Unauthorized);
         }
         if proposal.status != ProposalStatus::Active || env.ledger().sequence() > proposal.end_ledger {
@@ -1233,7 +1238,7 @@ impl GovernanceContract {
 
         // Issue #430: rule — refund the deposit when the proposer cancels
         // their own proposal before voting has started (before start_ledger);
-        // burn it in every other case (admin-cancel, or self-cancel mid-vote).
+        // burn it once voting is under way.
         //
         // Rationale: a proposer who spots a mistake and withdraws immediately
         // is not a spammer; penalising them the same as a bad-faith actor

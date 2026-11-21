@@ -33,9 +33,9 @@ flowchart TB
 
     subgraph ADMIN["3. Admin-key compromise"]
         direction TB
-        A3["Holder of a stolen admin key"] -->|"cancel(), pause(), transfer_admin()"| EP3["Admin entry points"]
-        EP3 -->|"targets"| AS3["Liveness of governance, cancelled or paused proposals"]
-        AS3 -->|"bounded by"| M3["Cancel and pause only: no voting, no execution, no parameter change, no mint"]
+        A3["Holder of a stolen admin key"] -->|"pause(), transfer_admin()"| EP3["Admin entry points"]
+        EP3 -->|"targets"| AS3["Liveness of governance while paused"]
+        AS3 -->|"bounded by"| M3["Pause and admin rotation only: no voting, no execution, no cancellation of others' proposals, no parameter change, no mint"]
     end
 
     subgraph GUARDIAN["4. Guardian collusion"]
@@ -77,11 +77,24 @@ Checklist for the author and the reviewer:
 
 ### 5. Admin Key Compromise
 **Threat:** The admin key is stolen or misused.
-**Mitigation:** The admin can only cancel proposals — they cannot vote on behalf of others, execute without timelock, or change governance parameters. The admin key should be held in a multisig or hardware wallet.
+**Mitigation:** The admin cannot cancel proposals, so a stolen key cannot silence a proposal or burn a proposer's deposit. It can pause the contract and rotate the admin; it cannot vote on behalf of others, execute without timelock, or change governance parameters. The admin key should still be held in a multisig or hardware wallet.
 
 ### 6. Guardian Abuse
 **Threat:** The guardian multisig vetoes a legitimate proposal.
 **Mitigation:** The guardian is a trusted role (typically a security multisig). This is a deliberate trade-off: the guardian provides a safety net against governance attacks at the cost of centralized veto power. The guardian cannot execute or modify proposals — only veto during the timelock window.
+
+### Why the admin cannot cancel proposals (#425)
+
+The guardian veto and pause already cover the emergency cases. Guardian veto
+stops a passed proposal during its timelock; pause halts creation, voting and
+execution while a situation is assessed. Admin cancellation duplicated those
+controls while adding a censorship lever: one key could stop any live proposal
+and burn the proposer's deposit, even though the proposer is the only party
+that chose to open it. The role was therefore removed rather than narrowed.
+Cancellation is now proposer-only, and the proposer's deposit follows the
+#430 rule (refunded before voting starts, forfeited once it has). If an admin
+key is abused, there is no proposal-cancellation power to abuse; the remaining
+actions are bounded in [Threat 5](#5-admin-key-compromise).
 
 ### 7. Storage-Rent Exhaustion / State-Bloat Griefing
 **Threat:** An attacker floods the contract with minimum-threshold proposals (each creating persistent entries: the proposal itself, a proposer index entry, and a proposer counter) so that persistent storage grows faster than TTL-extension costs discourage it.
@@ -97,16 +110,18 @@ Checklist for the author and the reviewer:
 
 | Actor | Power | Assumption |
 |-------|-------|------------|
-| **Admin** | Cancel any proposal | Holds the admin key; acts in good faith or is a multisig |
+| **Admin** | Pause the contract; rotate the admin and guardian | Holds the admin key; acts in good faith or is a multisig |
 | **Guardian** | Veto queued proposals during timelock | Trusted security multisig; acts as last-resort safety |
 | **Token holders** | Vote, propose (if above threshold) | Rational economic actors; hold tokens for governance |
 | **Stellar network** | Ledger ordering, snapshot integrity | Stellar consensus is operating correctly |
 
 ### What the Admin CAN do
-- Cancel any proposal (before or after voting)
+- Pause and unpause the contract
+- Rotate the admin and guardian, and set the proposal deposit, proposer cooldown and action allowlist
 - Deploy the initial contracts
 
 ### What the Admin CANNOT do
+- Cancel a proposal opened by someone else (cancellation is proposer-only)
 - Vote on behalf of others
 - Execute proposals without timelock
 - Change governance parameters (no `update_config()` exists)
@@ -118,7 +133,7 @@ Checklist for the author and the reviewer:
 ### What the Guardian CANNOT do
 - Create or vote on proposals
 - Execute proposals
-- Cancel proposals (that is the admin's role)
+- Cancel proposals (cancellation is proposer-only)
 
 ---
 
@@ -279,9 +294,9 @@ not arbitrage.
   last-moment swing vote inclusion. This requires sustained consensus-level
   misbehavior by validators, is observable on-chain, and is a property of
   Stellar itself rather than of this contract.
-- **Admin `cancel()` and guardian veto** are the only discretionary
-  outcomes. Both are off-chain multisig decisions with public on-chain
-  effects; there is no mempool to arbitrage them in.
+- **Proposer `cancel()`, admin `pause()` and guardian veto** are the only
+  discretionary outcomes. They are off-chain multisig decisions with public
+  on-chain effects; there is no mempool to arbitrage them in.
 - **Indexer/event-ordering games** are cosmetic: events are published after
   state is committed, and consumers should treat tallies from storage as
   authoritative.

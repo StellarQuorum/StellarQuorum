@@ -996,9 +996,10 @@ export class QuorumClient {
   /**
    * Builds signable XDR for `cancel(caller, proposal_id)` (issue #116).
    *
-   * Restricted by the contract to the proposer or the admin — anyone else
-   * fails with `Unauthorized`. `caller` must sign (via Freighter); `source`
-   * pays the fee and defaults to `caller` for the common single-wallet flow.
+   * Restricted by the contract to the proposal's proposer — anyone else,
+   * including the admin, fails with `Unauthorized` (#425). `caller` must sign
+   * (via Freighter); `source` pays the fee and defaults to `caller` for the
+   * common single-wallet flow.
    */
   async buildCancel(caller: string, proposalId: bigint, source?: string): Promise<string> {
     const feePayer = source ?? caller;

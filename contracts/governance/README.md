@@ -10,7 +10,7 @@ Soroban smart contract implementing on-chain governance for the Quorum protocol.
 - `vote` — cast For/Against/Abstain vote on active proposal
 - `finalize` — evaluate quorum after voting period ends
 - `execute` — execute queued proposal after timelock (must be within grace period if configured)
-- `cancel` — cancel by proposer or admin while voting is open (`ProposalNotCancellable` otherwise)
+- `cancel` — the proposer withdraws their own proposal while voting is open (`ProposalNotCancellable` otherwise; the admin cannot cancel)
 - `pause` — emergency pause proposal creation and execution (admin or guardian)
 - `unpause` — restore normal operation (admin only)
 - `extend_proposal_ttl` — anyone can pay to extend a proposal's storage lifetime
@@ -210,18 +210,18 @@ stellar contract invoke --id $GOV_ID --source anyone --network testnet -- \
 fn cancel(env, caller: Address, proposal_id: u64) -> Result<(), GovernanceError>
 ```
 
-**Purpose:** withdraw a proposal while voting is still open. Any deposit is forfeited.
+**Purpose:** the proposer withdraws their own proposal while voting is still open. The deposit is refunded if voting has not started, and forfeited once it has.
 
 | Parameter | Type | Valid range / meaning |
 | --- | --- | --- |
-| `caller` | `Address` | The proposer or the admin. Must authorize. |
+| `caller` | `Address` | The proposer. Must authorize; the admin has no cancellation power (#425). |
 | `proposal_id` | `u64` | An `Active` proposal whose `end_ledger` has not passed. |
 
 **Returns:** `()`.
 
-**Errors:** `NotInitialized` (18), `ProposalNotFound` (3), `Unauthorized` (2), `ProposalNotCancellable` (32).
+**Errors:** `NotInitialized` (18), `ProposalNotFound` (3), `Unauthorized` (2) if `caller` is not the proposer, `ProposalNotCancellable` (32).
 
-**Events:** `("proposal_cancelled", id)` → `ProposalCancelled { id, caller }`; `deposit_forfeited` if a deposit was held.
+**Events:** `("proposal_cancelled", id)` → `ProposalCancelled { id, caller }`; `deposit_refunded` when cancelled before `start_ledger`, otherwise `deposit_forfeited`.
 
 ```bash
 stellar contract invoke --id $GOV_ID --source proposer --network testnet -- \
@@ -561,11 +561,18 @@ Active list with back-to-back proposals.
 
 ## Cancellation
 
-`cancel` is allowed only while voting is open. The proposer or the admin can
-cancel an `Active` proposal whose `end_ledger` has not passed. Any other proposal
-fails with `ProposalNotCancellable`: one that is already queued, executed,
-failed, expired, vetoed or cancelled, and one whose voting window has closed but
-which has not been finalized yet.
+`cancel` is allowed only while voting is open, and only the proposer may call
+it. The admin has **no** unilateral cancellation power (#425): a single admin
+key could otherwise silence any proposal and burn its proposer's deposit,
+bypassing the guardian. The emergency controls remain the guardian `veto` on a
+queued proposal and `pause` (admin or guardian).
+
+The proposer can cancel an `Active` proposal whose `end_ledger` has not passed.
+Any other proposal fails with `ProposalNotCancellable`: one that is already
+queued, executed, failed, expired, vetoed or cancelled, and one whose voting
+window has closed but which has not been finalized yet. A deposit is refunded
+if the proposer cancels before `start_ledger` and burned (forfeited) once
+voting has started.
 
 ## Co-sponsored Proposals
 

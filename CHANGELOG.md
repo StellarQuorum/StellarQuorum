@@ -15,6 +15,12 @@ are marked **BREAKING** below.
 
 ### Breaking changes
 
+- **BREAKING (governance):** `cancel()` is now proposer-only. The admin can no
+  longer cancel a proposal it did not open, closing a unilateral censorship
+  path that also burned the proposer's deposit. Emergencies are handled by
+  `pause()` (admin or guardian) and the guardian `veto()` on queued proposals.
+  Cancellers that relied on the admin path now receive `Unauthorized`. (#425)
+  (2026-11-21)
 - **BREAKING (governance):** `set_proposal_action` takes a sixth argument,
   `args: Vec<Val>`, and appends to the proposal's actions (up to 10) instead of
   replacing the single action. `execute()` runs them in order and returns the new

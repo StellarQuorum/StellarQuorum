@@ -107,6 +107,14 @@ fn deploy_full(
     (admin, token_id, governance_id)
 }
 
+/// Deploys a governor and opens one proposal from the admin.
+/// Returns (admin, token id, governance id, proposal id).
+fn open_proposal(env: &Env) -> (Address, Address, Address, u64) {
+    let (admin, token_id, governance_id) = deploy(env, 1_000_000, QUORUM_BPS);
+    let id = propose(env, &governance_id, &admin).id;
+    (admin, token_id, governance_id, id)
+}
+
 fn propose(env: &Env, governance_id: &Address, proposer: &Address) -> Proposal {
     let governance = GovernanceContractClient::new(env, governance_id);
     let id = governance.create_proposal(
@@ -1029,7 +1037,7 @@ fn a_proposer_can_cancel_their_own_proposal() {
 }
 
 #[test]
-fn the_admin_can_cancel_a_proposal_they_did_not_open() {
+fn the_admin_cannot_cancel_a_proposal_they_did_not_open() {
     let env = Env::default();
     env.ledger().set_sequence_number(GENESIS);
     let (admin, _, governance_id) = deploy(&env, 1_000_000, QUORUM_BPS);
@@ -1039,10 +1047,14 @@ fn the_admin_can_cancel_a_proposal_they_did_not_open() {
     let outsider = Address::generate(&env);
     let proposal_id = propose(&env, &governance_id, &outsider).id;
 
-    governance.cancel(&admin, &proposal_id);
+    // #425: the admin has no unilateral cancellation power.
+    assert_eq!(
+        governance.try_cancel(&admin, &proposal_id),
+        Err(Ok(GovernanceError::Unauthorized))
+    );
     assert_eq!(
         governance.get_proposal(&proposal_id).status,
-        ProposalStatus::Cancelled
+        ProposalStatus::Active
     );
 }
 
@@ -1544,6 +1556,7 @@ fn voting_emits_vote_cast_with_the_snapshot_weight() {
             voter: admin,
             support: VOTE_ABSTAIN,
             voting_power: 1_000_000,
+            previous_support: None,
         }
     );
 }
@@ -1929,21 +1942,21 @@ fn full_lifecycle_passes_and_executes_after_timelock() {
     let (_, data) = last_governance_event(&env, &governance_id);
     assert_eq!(
         VoteCast::try_from_val(&env, &data).unwrap(),
-        VoteCast { proposal_id: id, voter: alice.clone(), support: VOTE_FOR, voting_power: 300_000 }
+        VoteCast { proposal_id: id, voter: alice.clone(), support: VOTE_FOR, voting_power: 300_000, previous_support: None }
     );
 
     governance.vote(&bob, &id, &VOTE_FOR);
     let (_, data) = last_governance_event(&env, &governance_id);
     assert_eq!(
         VoteCast::try_from_val(&env, &data).unwrap(),
-        VoteCast { proposal_id: id, voter: bob.clone(), support: VOTE_FOR, voting_power: 200_000 }
+        VoteCast { proposal_id: id, voter: bob.clone(), support: VOTE_FOR, voting_power: 200_000, previous_support: None }
     );
 
     governance.vote(&carol, &id, &VOTE_AGAINST);
     let (_, data) = last_governance_event(&env, &governance_id);
     assert_eq!(
         VoteCast::try_from_val(&env, &data).unwrap(),
-        VoteCast { proposal_id: id, voter: carol.clone(), support: VOTE_AGAINST, voting_power: 100_000 }
+        VoteCast { proposal_id: id, voter: carol.clone(), support: VOTE_AGAINST, voting_power: 100_000, previous_support: None }
     );
 
     assert!(governance.has_voted(&id, &alice));
@@ -3127,7 +3140,7 @@ fn get_proposals_by_proposer_empty_for_new_address() {
     let governance = GovernanceContractClient::new(&env, &governance_id);
     let never_proposed = Address::generate(&env);
     
-    let proposals = governance.get_proposals_by_proposer(&never_proposed);
+    let proposals = governance.get_proposals_by_proposer(&never_proposed, &None, &None);
     assert_eq!(proposals.len(), 0);
 }
 
@@ -3163,7 +3176,7 @@ fn get_proposals_by_proposer_returns_only_proposer_proposals() {
     );
     
     // Get proposals by proposer A
-    let proposals_a = governance.get_proposals_by_proposer(&proposer_a);
+    let proposals_a = governance.get_proposals_by_proposer(&proposer_a, &None, &None);
     assert_eq!(proposals_a.len(), 2);
     assert_eq!(proposals_a.get(0).unwrap().id, id1);
     assert_eq!(proposals_a.get(1).unwrap().id, id3);
@@ -3171,7 +3184,7 @@ fn get_proposals_by_proposer_returns_only_proposer_proposals() {
     assert_eq!(proposals_a.get(1).unwrap().proposer, proposer_a);
     
     // Get proposals by proposer B
-    let proposals_b = governance.get_proposals_by_proposer(&proposer_b);
+    let proposals_b = governance.get_proposals_by_proposer(&proposer_b, &None, &None);
     assert_eq!(proposals_b.len(), 1);
     assert_eq!(proposals_b.get(0).unwrap().proposer, proposer_b);
 }
@@ -3193,7 +3206,7 @@ fn get_proposals_by_proposer_multiple_proposals() {
         );
     }
     
-    let proposals = governance.get_proposals_by_proposer(&proposer);
+    let proposals = governance.get_proposals_by_proposer(&proposer, &None, &None);
     assert_eq!(proposals.len(), 5);
     
     // Verify all proposals are from the same proposer
@@ -3425,11 +3438,48 @@ fn cancelling_an_open_proposal_forfeits_its_deposit() {
     let governance = GovernanceContractClient::new(&env, &governance_id);
     let token = QuorumTokenClient::new(&env, &token_id);
 
+    // Voting has started, so the proposer's deposit is forfeited (#430).
+    start_voting(&env, &governance, id);
     governance.cancel(&proposer, &id);
 
     assert_eq!(token.balance(&governance_id), 0);
     assert_eq!(token.balance(&proposer), 90_000);
     assert_eq!(token.total_supply(), 990_000);
+}
+
+#[test]
+fn a_rejected_admin_cancel_leaves_the_proposers_deposit_in_escrow() {
+    let env = Env::default();
+    let (proposer, token_id, governance_id, id) = open_deposit_proposal(&env, 10_000, 100_000);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let token = QuorumTokenClient::new(&env, &token_id);
+    let admin = governance.get_config().admin;
+
+    start_voting(&env, &governance, id);
+
+    // #425: the admin cannot burn a proposer's deposit by cancelling for them.
+    assert_eq!(
+        governance.try_cancel(&admin, &id),
+        Err(Ok(GovernanceError::Unauthorized))
+    );
+    assert_eq!(token.balance(&proposer), 90_000);
+    assert_eq!(token.balance(&governance_id), 10_000);
+    assert_eq!(token.total_supply(), 1_000_000);
+}
+
+#[test]
+fn cancelling_before_voting_starts_refunds_the_deposit() {
+    let env = Env::default();
+    let (proposer, token_id, governance_id, id) = open_deposit_proposal(&env, 10_000, 100_000);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let token = QuorumTokenClient::new(&env, &token_id);
+
+    // Cancelling before voting opens is not a spam signal: refund it (#430).
+    governance.cancel(&proposer, &id);
+
+    assert_eq!(token.balance(&governance_id), 0);
+    assert_eq!(token.balance(&proposer), 100_000);
+    assert_eq!(token.total_supply(), 1_000_000);
 }
 
 #[test]
@@ -4047,14 +4097,14 @@ fn pause_and_unpause() {
     governance.pause(&admin);
     assert!(governance.get_config().paused);
 
-    governance.unpause(&admin);
+    governance.unpause();
     assert!(!governance.get_config().paused);
 }
 
 #[test]
 fn set_guardian() {
     let env = Env::default();
-    let (admin, _, governance_id, _) = open_proposal(&env);
+    let (_admin, _, governance_id, _) = open_proposal(&env);
     let governance = GovernanceContractClient::new(&env, &governance_id);
     let new_guardian = Address::generate(&env);
 
@@ -4065,7 +4115,7 @@ fn set_guardian() {
 #[test]
 fn set_proposal_deposit() {
     let env = Env::default();
-    let (admin, _, governance_id, _) = open_proposal(&env);
+    let (_admin, _, governance_id, _) = open_proposal(&env);
     let governance = GovernanceContractClient::new(&env, &governance_id);
 
     governance.set_proposal_deposit(&1000);
@@ -4077,7 +4127,7 @@ fn set_proposal_deposit() {
 #[test]
 fn set_proposer_cooldown() {
     let env = Env::default();
-    let (admin, _, governance_id, _) = open_proposal(&env);
+    let (_admin, _, governance_id, _) = open_proposal(&env);
     let governance = GovernanceContractClient::new(&env, &governance_id);
 
     governance.set_proposer_cooldown(&500);
@@ -4087,7 +4137,7 @@ fn set_proposer_cooldown() {
 #[test]
 fn allow_and_disallow_target() {
     let env = Env::default();
-    let (admin, _, governance_id, _) = open_proposal(&env);
+    let (_admin, _, governance_id, _) = open_proposal(&env);
     let governance = GovernanceContractClient::new(&env, &governance_id);
     let target = Address::generate(&env);
 
@@ -4099,12 +4149,12 @@ fn allow_and_disallow_target() {
 #[test]
 fn admin_transfer_lifecycle() {
     let env = Env::default();
-    let (admin, _, governance_id, _) = open_proposal(&env);
+    let (_admin, _, governance_id, _) = open_proposal(&env);
     let governance = GovernanceContractClient::new(&env, &governance_id);
     let new_admin = Address::generate(&env);
 
     governance.transfer_admin(&new_admin);
-    governance.accept_admin(&new_admin);
+    governance.accept_admin();
 
     let config = governance.get_config();
     assert_eq!(config.admin, new_admin);
@@ -4118,7 +4168,7 @@ fn cancel_admin_transfer() {
     let new_admin = Address::generate(&env);
 
     governance.transfer_admin(&new_admin);
-    governance.cancel_admin_transfer(&admin);
+    governance.cancel_admin_transfer();
 
     let config = governance.get_config();
     assert_eq!(config.admin, admin);

@@ -74,7 +74,7 @@ Consider deploying multiple governance instances for different proposal types:
 
 ### 3.1 Admin Key Custody
 
-The admin key can cancel any proposal. **Do not use a single key.**
+The admin key can pause the contract and rotate the admin/guardian. **Do not use a single key.** The admin cannot cancel proposals; cancellation is proposer-only.
 
 **Recommended setup:**
 - Use a **multisig** (e.g., 3-of-5) for the admin key
@@ -142,7 +142,7 @@ Deploy to Stellar testnet first and run through a full governance cycle:
 4. **Vote on the proposal** with multiple accounts
 5. **Finalize and execute** the proposal
 6. **Test the guardian veto** (cancel a queued proposal)
-7. **Test admin cancel** (cancel an active proposal)
+7. **Confirm the admin cannot cancel** (the call must fail with `Unauthorized`)
 
 **Success criteria:**
 - All proposals finalize correctly

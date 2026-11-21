@@ -55,7 +55,7 @@ A:
 A: A proposal fails if:
 - Quorum is not reached (total votes < quorum threshold)
 - Against votes ≥ For votes
-- The proposal is cancelled by the proposer or admin
+- The proposal is cancelled by its proposer
 
 Even if 90% of votes are "For," the proposal fails if quorum is not met (e.g., only 1% of supply voted when 5% is required).
 
@@ -155,8 +155,8 @@ A: Community calls and office hours are detailed in [Community Calls](./communit
 **Q: What is the difference between admin and guardian?**
 
 A:
-- **Admin:** Can cancel any proposal (before or after voting). Should be held in a multisig. Cannot vote, execute, or change parameters.
-- **Guardian:** Can veto queued proposals during the timelock window. Should be a dedicated security multisig. Cannot create, vote, execute, or cancel proposals.
+- **Admin:** Can pause the contract and rotate the admin/guardian. Should be held in a multisig. Cannot cancel proposals, vote, execute, or change parameters.
+- **Guardian:** Can veto queued proposals during the timelock window. Should be a dedicated security multisig. Cannot create, vote, execute, or cancel proposals (cancellation is proposer-only).
 
 See [security-model.md](./security-model.md) for the full threat model and trust assumptions.
 

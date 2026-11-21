@@ -62,7 +62,7 @@ A multisig address that can veto proposals during the timelock window. Acts as a
 | **Failed** | Quorum not reached or majority Against |
 | **Queued** | Passed, waiting in timelock |
 | **Executed** | Timelock expired, actions executed |
-| **Cancelled** | Cancelled by proposer or admin before execution |
+| **Cancelled** | Cancelled by the proposer while voting is open |
 
 ---
 

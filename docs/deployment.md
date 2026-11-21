@@ -56,7 +56,7 @@ See [governance-parameters.md](./governance-parameters.md) for guidance on choos
 The `initialize` call takes eight arguments and sets them **once**; the contract has no `update_config()`. Only the proposal deposit, the proposer cooldown and the guardian can be changed later, through their own admin calls. Choose carefully.
 
 ```
---admin <ADDRESS>          The deployer address (can cancel proposals)
+--admin <ADDRESS>          The deployer address (can pause and rotate admin)
 --guardian <ADDRESS>       Can veto queued proposals during the timelock
 --token <TOKEN_ID>         The QUORUM token contract address
 --quorum_bps <U32>         Quorum threshold in basis points (e.g. 500 = 5%)

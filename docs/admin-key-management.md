@@ -9,8 +9,11 @@ The admin key in Quorum's governance and token contracts holds significant power
 ### What the Admin Key Controls
 
 **Governance contract admin (`Config.admin`):**
-- Cancel any proposal (before or after voting)
+- Pause and unpause the contract
+- Rotate the admin and guardian, and set the proposal deposit, proposer cooldown and action allowlist
 - Deploy the initial contracts
+
+The admin cannot cancel proposals: cancellation is proposer-only (#425).
 
 **Token contract admin (`Admin`):**
 - Mint new tokens
@@ -22,7 +25,7 @@ The admin key in Quorum's governance and token contracts holds significant power
 
 | Risk | Impact | Likelihood |
 |------|--------|------------|
-| Key theft via phishing | Critical (minting, proposal cancellation) | Medium |
+| Key theft via phishing | Critical (minting, pausing governance) | Medium |
 | Key holder acts maliciously | Critical (token inflation, governance manipulation) | Low (if vetted) |
 | Key loss | High (cannot deploy or rotate admin) | Low (with proper backup) |
 
@@ -307,7 +310,7 @@ Perform these checks quarterly:
 
 - [ ] Verify admin key is in expected address (multisig, not EOA)
 - [ ] Confirm multisig signers are still active and trusted
-- [ ] Review admin activity logs (proposal cancellations, mints, burns)
+- [ ] Review admin activity logs (pause/unpause, admin rotations, mints, burns)
 - [ ] Test admin key access (can you still sign transactions?)
 - [ ] Update documentation if signers or procedures changed
 

@@ -8,13 +8,13 @@ This runbook provides step-by-step guidance for guardians and operators respondi
 
 This runbook applies to:
 - **Guardian multisig signers** — trusted operators with veto authority
-- **Admin key holders** — operators with proposal cancellation authority
-- **Core team** — responsible for communication and coordination
+- **Admin key holders** — operators with pause and key-rotation authority
+- **Proposers** — the only party that can cancel a proposal
 
 **Emergency tools available:**
 - Guardian veto (timelock window only)
-- Admin cancellation (any proposal stage)
-- Contract pause (if implemented via emergency proposal)
+- Contract pause (admin or guardian)
+- Proposer cancellation (only the address that opened the proposal)
 
 ---
 
@@ -49,8 +49,8 @@ Monitor these channels and signals for anomalies:
 - Delegations to unknown addresses
 
 **Admin key compromise:**
-- Admin cancels legitimate proposals without explanation
-- Unauthorized proposals appear with admin signatures
+- Governance is paused without explanation
+- Admin or guardian rotation is attempted unexpectedly
 - Admin key used from unexpected IP/location
 
 ### Monitoring Setup
@@ -59,7 +59,7 @@ Set up automated alerts for:
 - Proposal creation with titles containing "admin", "mint", "transfer", "pause"
 - Any proposal reaching > 50% "For" votes within 1 hour of creation
 - Token transfers > 5% of total supply in a single transaction
-- Admin key usage (cancellation events)
+- Admin key usage (pause/unpause and rotation events)
 
 ---
 
@@ -100,33 +100,21 @@ Set up automated alerts for:
    - Note the time, proposal ID, signers, and rationale
    - Save transaction hash for audit trail
 
-### Admin Cancellation (Any Stage)
+### Proposal Cancellation (Proposer Only)
 
-**When to use:**
-- A proposal is clearly malicious but has not yet passed
-- The threat is urgent and the guardian window is insufficient
-- The admin key is secure and not suspected of compromise
+**Who can use it:** only the address that opened the proposal. The admin has no
+cancellation power (#425), so operators cannot use cancellation as an emergency
+tool.
 
-**Steps:**
+**When the proposer may use it:**
+- The proposal was opened in error, or its content is wrong
+- Voting is still open (`end_ledger` has not passed)
 
-1. **Verify authorization**
-   - Confirm you hold the admin key or have multisig access
-   - If single-key admin, ensure the key is hardware-backed or in secure custody
-   - If the admin key itself is compromised, **do not use it** — contact the guardian instead
-
-2. **Execute cancellation**
-   - Build the cancel transaction:
-     ```typescript
-     const cancelTx = await client.buildCancelProposal(proposalId);
-     ```
-   - Sign with the admin key
-   - Submit to Stellar RPC
-   - Verify proposal status changes to `Cancelled`
-
-3. **Post-cancellation communication**
-   - Announce the cancellation immediately (see Section 3)
-   - Explain why the proposal was cancelled
-   - Invite token holders to discuss if they disagree
+A cancellation before `start_ledger` refunds the deposit; a cancellation after
+voting starts forfeits it. If an operator needs to neutralize a malicious live
+proposal it cannot cancel, the options are to pause the contract and let the
+voting window expire, or to let the proposal queue and have the guardian veto
+it.
 
 ### Emergency Pause (Via Proposal)
 
@@ -355,7 +343,7 @@ When deciding whether to veto, ask:
 
 ### Scenario B: Admin Key Compromise
 
-**Situation:** Admin key cancels legitimate proposals and creates malicious ones.
+**Situation:** The admin key pauses governance without explanation, or attempts to rotate the admin to an attacker address.
 
 **Response:**
 1. **Do not use the compromised admin key**
