@@ -217,7 +217,8 @@ export async function getProposalById(id: string): Promise<Proposal | undefined>
   const client = await createQuorumClient();
   const [proposal, latestLedger] = await Promise.all([client.getProposal(BigInt(match[1])), client.getLatestLedger()]);
   if (!proposal) return undefined;
-  const uiProposal = toUiProposal(proposal, latestLedger);
+  const conviction = await client.getConviction(proposal.id);
+  const uiProposal = toUiProposal(proposal, latestLedger, Date.now(), conviction ?? undefined);
   if (proposal.status !== "Vetoed") return uiProposal;
   const veto = await client.getProposalVetoEvent(proposal.id);
   return veto ? { ...uiProposal, veto: { guardian: veto.guardian, reason: veto.reason } } : uiProposal;
@@ -228,7 +229,7 @@ export async function getProposalById(id: string): Promise<Proposal | undefined>
  * actions or per-vote history, and counts time in ledgers, so those fields are
  * filled with neutral defaults and ledger-based date estimates.
  */
-export function toUiProposal(p: ChainProposal, latestLedger: number, now = Date.now()): Proposal {
+export function toUiProposal(p: ChainProposal, latestLedger: number, now = Date.now(), conviction?: Proposal["conviction"]): Proposal {
   const ledgerTime = (ledger: number) =>
     new Date(now + (ledger - latestLedger) * SECONDS_PER_LEDGER * 1000).toISOString();
   return {
@@ -251,5 +252,6 @@ export function toUiProposal(p: ChainProposal, latestLedger: number, now = Date.
     category: "General",
     actions: [],
     votes: [],
+    conviction,
   };
 }

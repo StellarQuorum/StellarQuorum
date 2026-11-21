@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRpcHealth } from './rpc-health';
-import { createQuorumClient } from './config';
+import { createQuorumClient, getSavedRpcUrl } from './config';
 
 /**
  * Hook that checks RPC health once on mount by calling getLatestLedger.
@@ -22,7 +22,7 @@ export function useRpcHealthCheck() {
       if (!mounted) return;
 
       try {
-        const client = await createQuorumClient();
+        const client = await createQuorumClient(getSavedRpcUrl());
         const start = Date.now();
         const ledger = await client.getLatestLedger();
         const latency = Date.now() - start;

@@ -88,6 +88,14 @@ export default async function ProposalDetailPage({ params }: { params: Promise<{
       )}
 
       <LiveVoteResults initial={proposal}>
+        {proposal.conviction && <section className="p-5 rounded-xl bg-[#0d1520] border border-[#1a2535] mb-6" aria-label="Decayed conviction">
+          <h2 className="font-semibold text-white mb-3">Decayed conviction</h2>
+          <div className="grid grid-cols-2 gap-4 text-center text-sm">
+            <div><div className="text-emerald-400 font-bold">{proposal.conviction.forConviction.toString()}</div><div className="text-slate-500">For conviction</div></div>
+            <div><div className="text-red-400 font-bold">{proposal.conviction.againstConviction.toString()}</div><div className="text-slate-500">Against conviction</div></div>
+          </div>
+          <p className="mt-3 text-xs text-slate-500">Updated at ledger #{proposal.conviction.updatedLedger}</p>
+        </section>}
         {/* Vote CTA */}
         {proposal.status === "active" && (
           <div className="p-5 rounded-xl bg-[#0d1520] border border-blue-800/40 mb-6 print:hidden">

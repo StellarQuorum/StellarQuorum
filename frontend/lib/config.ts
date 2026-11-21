@@ -26,11 +26,11 @@ export const TOKEN_DECIMALS = 7;
 let versionCheck: Promise<void> | undefined;
 
 /** A QuorumClient pointed at the configured network. */
-export async function createQuorumClient(): Promise<QuorumClient> {
+export async function createQuorumClient(rpcUrlOverride?: string): Promise<QuorumClient> {
   // Imported lazily so fixture mode (and its tests) never load the Stellar SDK.
   const { QuorumClient, TESTNET } = await import("@quorum/sdk");
   const client = new QuorumClient({
-    rpcUrl: env.stellarRpcUrl || TESTNET.rpcUrl!,
+    rpcUrl: rpcUrlOverride?.trim() || env.stellarRpcUrl || TESTNET.rpcUrl!,
     networkPassphrase: env.networkPassphrase || TESTNET.networkPassphrase!,
     // Validated in loadEnv, so this is a contract ID or nothing.
     governanceContractId: env.governanceContractId!,
@@ -47,4 +47,17 @@ export async function createQuorumClient(): Promise<QuorumClient> {
     });
   await versionCheck;
   return client;
+}
+
+/** Read the browser-only endpoint selected in Settings without touching localStorage on the server. */
+export function getSavedRpcUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = window.localStorage.getItem("quorum:settings:v1");
+    if (!raw) return undefined;
+    const value = JSON.parse(raw) as { rpcUrl?: unknown };
+    return typeof value.rpcUrl === "string" && value.rpcUrl.trim() ? value.rpcUrl : undefined;
+  } catch {
+    return undefined;
+  }
 }

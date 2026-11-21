@@ -35,4 +35,5 @@ export interface Proposal {
   votes: Vote[];
   category: string;
   veto?: { guardian: string; reason: string };
+  conviction?: { forConviction: bigint; againstConviction: bigint; updatedLedger: number };
 }

@@ -1,4 +1,4 @@
-import { TOKEN_DECIMALS, USE_FIXTURE, createQuorumClient } from "./config";
+import { TOKEN_DECIMALS, USE_FIXTURE, createQuorumClient, getSavedRpcUrl } from "./config";
 import { formatNumber, getLocale } from "./i18n";
 
 /**
@@ -55,7 +55,7 @@ export async function getVotingPower(address: string, snapshotLedger: number): P
     };
   }
 
-  const client = await createQuorumClient();
+  const client = await createQuorumClient(getSavedRpcUrl());
   const [snapshot, current, decimals] = await Promise.all([
     client.getVotingPower(address, snapshotLedger),
     client.getBalance(address),
