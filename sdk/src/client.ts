@@ -1,10 +1,10 @@
 import { rpc, Contract, Transaction, TransactionBuilder, BASE_FEE, nativeToScVal, scValToNative, Address, Account, xdr } from '@stellar/stellar-sdk';
-import type { Proposal, ConvictionTally, GovernanceConfig, QuorumClientConfig, VoteSupport, GetProposalsOptions, ProposalStatus, TransactionConfirmationOptions, WaitForStatusOptions, FeeEstimate, ReadMethod, ReadOptions } from './types.js';
+import type { Proposal, ConvictionTally, ContractVersions, GovernanceConfig, GovernanceStats, QuorumClientConfig, VoteSupport, GetProposalsOptions, ProposalStatus, TransactionConfirmationOptions, WaitForStatusOptions, FeeEstimate, ReadMethod, ReadOptions } from './types.js';
 import { ReadCache } from './cache.js';
 import { SimulationBatcher, postSimulationBatch } from './batch.js';
 import { GovernanceContractError, GOVERNANCE_ERROR_MESSAGES, GovernanceError, governanceErrorFromCode, parseGovernanceError, RpcTimeoutError, TransactionFailedError, contractErrorCode } from './errors.js';
 import { decodeEvent } from './events.js';
-import type { ProposalVetoedEvent } from './events.js';
+import type { DelegatedEvent, ProposalVetoedEvent } from './events.js';
 
 /**
  * Source account used for read-only simulation.
@@ -235,6 +235,28 @@ export class QuorumClient {
       if (decoded?.type === 'proposal_vetoed' && decoded.id === id) return decoded;
     }
     return null;
+  }
+
+  /** Recent on-chain delegation changes for an address (Soroban's retained event window). */
+  async getDelegationEvents(address: string): Promise<Array<DelegatedEvent & { ledger: number }>> {
+    const latestLedger = await this.getLatestLedger();
+    const startLedger = Math.max(1, latestLedger - 120_960);
+    const topic = nativeToScVal('delegated', { type: 'symbol' }).toXDR('base64');
+    const delegatorTopic = new Address(address).toScVal().toXDR('base64');
+    const response = await this.read('getDelegationEvents', () => this.server.getEvents({
+      startLedger,
+      endLedger: latestLedger,
+      limit: 1000,
+      filters: [{ type: 'contract', contractIds: [this.config.governanceContractId], topics: [[topic, delegatorTopic]] }],
+    }));
+    const events: Array<DelegatedEvent & { ledger: number }> = [];
+    for (const event of response.events) {
+      const decoded = decodeEvent(event);
+      if (decoded?.type === 'delegated' && decoded.delegator === address) {
+        events.push({ ...decoded, ledger: Number(event.ledger) });
+      }
+    }
+    return events.sort((a, b) => b.ledger - a.ledger);
   }
 
   async getProposalCount(options?: ReadOptions): Promise<bigint> {
@@ -911,6 +933,23 @@ export class QuorumClient {
       nativeToScVal(title, { type: 'string' }),
       nativeToScVal(description, { type: 'string' }),
       nativeToScVal(metadataUri, { type: 'string' }),
+    );
+  }
+
+  /**
+   * Builds signable XDR for `veto(guardian, proposal_id, reason)` (#453).
+   * The connected guardian must authorize the transaction. The reason must be
+   * non-empty and no longer than the contract limit.
+   * @throws {GovernanceContractError} for Unauthorized, EmptyVetoReason,
+   * VetoReasonTooLong, VetoWindowClosed, or other contract errors.
+   */
+  async buildVeto(guardian: string, proposalId: bigint, reason: string, source?: string): Promise<string> {
+    return this.buildGovernanceTransaction(
+      source ?? guardian,
+      'veto',
+      new Address(guardian).toScVal(),
+      nativeToScVal(proposalId, { type: 'u64' }),
+      nativeToScVal(reason, { type: 'string' }),
     );
   }
 

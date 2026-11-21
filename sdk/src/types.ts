@@ -99,7 +99,8 @@ export type ReadMethod =
   | 'getLatestLedger' | 'getVotingPower' | 'getBalance' | 'getTokenDecimals'
   | 'balance' | 'getPastBalance' | 'allowance' | 'totalSupply'
   | 'getProposalsByProposer' | 'getPastTotalSupply'
-  | 'getCosponsors' | 'getConviction';
+  | 'getCosponsors' | 'getConviction' | 'lockedBalance' | 'spendableBalance'
+  | 'getGovernanceStats';
 
 export interface ReadCacheConfig {
   enabled: boolean;

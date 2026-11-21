@@ -35,4 +35,9 @@ describe("StatusBadge", () => {
     const { container } = render(<StatusBadge status="cancelled" />);
     expect(describeVisual(container.firstChild)).toMatchSnapshot();
   });
+
+  it.each(["queued", "vetoed", "expired"] as const)("matches the visual baseline when %s", status => {
+    const { container } = render(<StatusBadge status={status} />);
+    expect(describeVisual(container.firstChild)).toMatchSnapshot();
+  });
 });

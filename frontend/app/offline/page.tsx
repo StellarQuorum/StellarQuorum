@@ -1,3 +1,5 @@
+'use client';
+
 import { WifiOff, RefreshCw } from "lucide-react";
 import { t } from "@/lib/i18n";
 

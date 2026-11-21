@@ -102,6 +102,23 @@ exports[`Footer matches the visual baseline 1`] = `
               ],
               "tag": "li",
             },
+            {
+              "attrs": {},
+              "children": [
+                {
+                  "attrs": {
+                    "class": "text-slate-400 hover:text-slate-200 focus-visible:text-slate-200 hover:underline focus-visible:underline underline-offset-4 transition-colors",
+                    "href": "/feed.xml",
+                    "title": "Subscribe to governance proposals",
+                  },
+                  "children": [
+                    "RSS feed",
+                  ],
+                  "tag": "a",
+                },
+              ],
+              "tag": "li",
+            },
           ],
           "tag": "ul",
         },
@@ -110,12 +127,18 @@ exports[`Footer matches the visual baseline 1`] = `
     },
     {
       "attrs": {
-        "class": "mt-4",
+        "class": "mt-4 flex items-center justify-center gap-4",
       },
       "children": [
-        "Quorum · Built for the Stellar Ecosystem · Drips Wave Contributor · MIT License",
+        {
+          "attrs": {},
+          "children": [
+            "Quorum · Built for the Stellar Ecosystem · Drips Wave Contributor · MIT License",
+          ],
+          "tag": "p",
+        },
       ],
-      "tag": "p",
+      "tag": "div",
     },
   ],
   "tag": "footer",

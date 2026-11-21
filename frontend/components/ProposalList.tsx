@@ -16,6 +16,11 @@ const FILTERS: { label: string; value: ProposalStatus | "all" }[] = [
   { label: t("common.passed"), value: "passed" },
   { label: t("common.failed"), value: "failed" },
   { label: t("common.pending"), value: "pending" },
+  { label: t("common.queued"), value: "queued" },
+  { label: t("common.vetoed"), value: "vetoed" },
+  { label: t("common.expired"), value: "expired" },
+  { label: t("common.executed"), value: "executed" },
+  { label: t("common.cancelled"), value: "cancelled" },
 ];
 
 export default function ProposalList({ proposals }: { proposals: Proposal[] }) {

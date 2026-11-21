@@ -2,11 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
+import Link from "next/link";
 import { t } from "@/lib/i18n";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import MarkdownPreview from "@/components/MarkdownPreview";
 import { isValidStellarAddress } from "@/lib/validators";
 import { getProposalTemplates, type ProposalTemplate } from "@/lib/proposal-templates";
+import { useWallet } from "@/components/WalletProvider";
+import { getWalletAdapter } from "@/lib/wallets";
+import { createQuorumClient, USE_FIXTURE } from "@/lib/config";
+import { formatProposalSubmissionError, submitProposal } from "@/lib/createProposal";
 
 const TEMPLATES = getProposalTemplates();
 const CATEGORIES = ["financial", "technical", "treasury", "governance", "security", "community", "protocol"].map(key => t("create.categories." + key));
@@ -19,12 +24,16 @@ const EMPTY_FORM: FormState = { title: "", category: t("create.categories.govern
 const DRAFT_KEY = "proposal-draft";
 
 export default function CreatePage() {
+  const { address, activeWalletId } = useWallet();
   const { value: savedDraft, setValue: saveDraft, removeValue: clearDraft, isLoaded } = useLocalStorage<FormState>(DRAFT_KEY, EMPTY_FORM);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [step, setStep] = useState<Step>("edit");
   const [showDraftRestore, setShowDraftRestore] = useState(false);
   const [previewTab, setPreviewTab] = useState<"edit" | "preview">("edit");
   const [contractAddressError, setContractAddressError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [createdProposalId, setCreatedProposalId] = useState<bigint | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -79,9 +88,33 @@ export default function CreatePage() {
     saveDraft(newForm);
   };
 
-  const handleSubmit = () => {
-    clearDraft();
-    setStep("submitted");
+  const handleSubmit = async () => {
+    if (!address || !activeWalletId) {
+      setSubmissionError(t("create.connectBeforeSubmit"));
+      return;
+    }
+    const wallet = getWalletAdapter(activeWalletId);
+    if (!wallet) {
+      setSubmissionError(t("create.walletUnavailable"));
+      return;
+    }
+    if (USE_FIXTURE) {
+      setSubmissionError(t("create.networkUnavailable"));
+      return;
+    }
+    setSubmitting(true);
+    setSubmissionError(null);
+    try {
+      const client = await createQuorumClient();
+      const result = await submitProposal(client, wallet, address, form);
+      setCreatedProposalId(result.id);
+      clearDraft();
+      setStep("submitted");
+    } catch (cause) {
+      setSubmissionError(formatProposalSubmissionError(cause));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const inputClass = "w-full bg-[#0a0f18] border border-[#1a2535] rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-blue-600 transition-colors";
@@ -110,8 +143,8 @@ export default function CreatePage() {
 
     {step === "submitted" ? <div className="p-8 rounded-xl bg-[#0d1520] border border-emerald-800/50 text-center">
       <div className="text-4xl mb-3">✓</div><h2 className="text-xl font-bold text-emerald-400 mb-2">{t("create.submitted")}</h2>
-      <p className="text-slate-400 mb-4">{t("create.submittedMessage", { title: form.title })}</p>
-      <p className="text-sm text-slate-500">{t("create.simulation")}</p>
+      <p className="text-slate-400 mb-4">{t("create.confirmed", { proposalId: String(createdProposalId) })}</p>
+      {createdProposalId !== null && <Link href={`/proposals/QIP-${String(createdProposalId).padStart(3, "0")}`} className="text-sm text-blue-400 hover:text-blue-300">{t("create.viewProposal")}</Link>}
       <button onClick={() => { setStep("edit"); setForm(EMPTY_FORM); }} className="mt-6 px-6 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-sm font-medium">{t("create.another")}</button>
     </div> : step === "review" ? <section aria-labelledby="review-heading" className="flex flex-col gap-6">
       <div><h2 id="review-heading" className="text-2xl font-bold text-white mb-2">{t("create.review")}</h2><p className="text-slate-400">{t("create.reviewHelp")}</p></div>
@@ -125,7 +158,10 @@ export default function CreatePage() {
         <div><dt className="text-xs uppercase tracking-wider text-slate-500 mb-1">{t("create.votingWindow")}</dt><dd className="font-semibold text-white">{form.duration}</dd></div>
         <div><dt className="text-xs uppercase tracking-wider text-slate-500 mb-1">{t("create.quorumRequired")}</dt><dd className="font-semibold text-white">{QUORUM}</dd></div>
       </dl>
-      <div className="flex flex-col-reverse sm:flex-row gap-3"><button type="button" onClick={() => setStep("edit")} className="flex-1 py-3 border border-[#1a2535] text-slate-300 rounded-lg font-semibold">{t("create.edit")}</button><button type="button" onClick={handleSubmit} className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold">{t("create.sign")}</button></div>
+      {!address && <p role="status" className="text-sm text-amber-300">{t("create.connectBeforeSubmit")}</p>}
+      {USE_FIXTURE && <p role="status" className="text-sm text-amber-300">{t("create.networkUnavailable")}</p>}
+      {submissionError && <p role="alert" className="rounded-lg border border-red-900 bg-red-950/30 p-3 text-sm text-red-300">{submissionError}</p>}
+      <div className="flex flex-col-reverse sm:flex-row gap-3"><button type="button" onClick={() => setStep("edit")} disabled={submitting} className="flex-1 py-3 border border-[#1a2535] text-slate-300 rounded-lg font-semibold disabled:opacity-60">{t("create.edit")}</button><button type="button" onClick={() => void handleSubmit()} disabled={!address || submitting || USE_FIXTURE} className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-semibold disabled:cursor-not-allowed disabled:opacity-50">{submitting ? t("create.submitting") : t("create.sign")}</button></div>
       <p className="text-xs text-slate-500 text-center">{t("create.fee")}</p>
     </section> : <form onSubmit={event => { event.preventDefault(); if (validateContractAddress()) setStep("review"); }} className="flex flex-col gap-6">
       {!form.description && (

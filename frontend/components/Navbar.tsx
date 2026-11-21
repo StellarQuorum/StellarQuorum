@@ -30,7 +30,7 @@ export default function Navbar() {
             </>
           ) : (
             <button
-              onClick={connect}
+              onClick={() => void connect()}
               disabled={pending}
               className="px-4 py-1.5 border border-blue-700 text-blue-400 hover:bg-blue-900/30 focus-visible:bg-blue-900/30 rounded-md transition-colors disabled:opacity-50"
             >

@@ -1,4 +1,4 @@
-export type ProposalStatus = 'active' | 'passed' | 'failed' | 'pending' | 'executed' | 'cancelled' | 'vetoed';
+export type ProposalStatus = 'active' | 'passed' | 'failed' | 'pending' | 'queued' | 'executed' | 'cancelled' | 'vetoed' | 'expired';
 export type VoteChoice = 'for' | 'against' | 'abstain';
 
 export interface Vote {

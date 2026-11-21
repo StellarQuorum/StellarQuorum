@@ -49,7 +49,7 @@ describe("toUiProposal", () => {
     const ui = toUiProposal(chain, 1000, now);
     expect(ui).toMatchObject({
       id: "QIP-007",
-      status: "passed",
+      status: "queued",
       forVotes: 100,
       quorumRequired: 50,
       startTime: new Date(now).toISOString(),
@@ -61,5 +61,9 @@ describe("toUiProposal", () => {
 
   it("lower-cases the other statuses", () => {
     expect(toUiProposal({ ...chain, status: "Active" }, 0).status).toBe("active");
+  });
+
+  it.each(["Queued", "Vetoed", "Expired"] as const)("preserves the %s contract status", status => {
+    expect(toUiProposal({ ...chain, status }, 0).status).toBe(status.toLowerCase());
   });
 });

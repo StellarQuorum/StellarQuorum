@@ -236,8 +236,8 @@ export function toUiProposal(p: ChainProposal, latestLedger: number, now = Date.
     title: p.title,
     description: p.description,
     proposer: p.proposer,
-    // The UI has no "queued" state; a queued proposal has passed and awaits its timelock.
-    status: (p.status === "Queued" ? "passed" : p.status.toLowerCase()) as ProposalStatus,
+    // Keep contract lifecycle states distinct so filters and badges reflect the chain.
+    status: p.status.toLowerCase() as ProposalStatus,
     startTime: ledgerTime(p.startLedger),
     endTime: ledgerTime(p.endLedger),
     // The ledger a vote on this proposal is weighted by, not by the voter's
