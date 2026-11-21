@@ -4,10 +4,12 @@ export type ProposalStatus =
   | 'Expired' | 'Vetoed';
 
 /**
- * Derived client-side phases computed from on-chain status + ledger timing.
- * Not stored on-chain; use these in UI display logic only.
+ * Lifecycle phases computed by `get_proposal_phase` from on-chain state and
+ * ledger timing.
  */
-export type ProposalPhase = 'Pending' | 'Voting' | 'TimelockPending' | ProposalStatus;
+export type ProposalPhase =
+  | 'Pending' | 'Active' | 'Ended' | 'Queued' | 'ReadyToExecute' | 'Passed'
+  | 'Executed' | 'Failed' | 'Cancelled' | 'Expired' | 'Vetoed';
 
 export type VoteSupport = 0 | 1 | 2; // 0=Against 1=For 2=Abstain
 

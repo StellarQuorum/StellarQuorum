@@ -36,7 +36,8 @@ export default function WalletProvider({ children }: { children: React.ReactNode
       setPending(true);
       setError(null);
       try {
-        const wallets = getAvailableWallets();
+        const wallets = availableWallets.length ? availableWallets : getAvailableWallets();
+        setAvailableWallets(wallets);
         if (wallets.length === 0) {
           setError(t("nav.noWallet"));
           return;
@@ -60,7 +61,7 @@ export default function WalletProvider({ children }: { children: React.ReactNode
         setPending(false);
       }
     },
-    []
+    [availableWallets]
   );
 
   const disconnect = useCallback(() => {

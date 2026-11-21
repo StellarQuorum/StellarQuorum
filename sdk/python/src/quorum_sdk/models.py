@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from typing import Literal
 
 ProposalStatus = Literal["Pending", "Active", "Passed", "Failed", "Queued", "Executed", "Cancelled"]
+ProposalPhase = Literal[
+    "Pending", "Active", "Ended", "Queued", "ReadyToExecute", "Passed",
+    "Executed", "Failed", "Cancelled", "Expired", "Vetoed",
+]
 VoteSupport = Literal[0, 1, 2]
 
 
@@ -32,6 +36,18 @@ class GovernanceConfig:
     timelock_period: int
     proposal_threshold: int
     admin: str
+
+
+@dataclass(frozen=True)
+class GovernanceStats:
+    total_proposals: int
+    active_proposals: int
+    queued_proposals: int
+    executed_proposals: int
+    failed_proposals: int
+    cancelled_proposals: int
+    expired_proposals: int
+    vetoed_proposals: int
 
 
 @dataclass(frozen=True)

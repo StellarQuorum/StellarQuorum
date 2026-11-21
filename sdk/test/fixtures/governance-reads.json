@@ -47,5 +47,34 @@
       "expected": 2,
       "xdr": "AAAAAwAAAAI="
     }
-  ]
+  ],
+  "phase": {
+    "xdr": "AAAAEAAAAAEAAAABAAAADwAAAA5SZWFkeVRvRXhlY3V0ZQAA",
+    "expected": "ReadyToExecute"
+  },
+  "quorumProgress": {
+    "xdr": "AAAAAwAAHUw=",
+    "expected": 7500
+  },
+  "delegate": {
+    "xdr": "AAAAEgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "expected": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+  },
+  "pastVotes": {
+    "xdr": "AAAACgAAAAAAAAAAAAAAAAAB4kA=",
+    "expected": "123456"
+  },
+  "stats": {
+    "xdr": "AAAAEQAAAAEAAAAIAAAADwAAAA90b3RhbF9wcm9wb3NhbHMAAAAABQAAAAAAAAAKAAAADwAAABBhY3RpdmVfcHJvcG9zYWxzAAAABQAAAAAAAAACAAAADwAAABBxdWV1ZWRfcHJvcG9zYWxzAAAABQAAAAAAAAABAAAADwAAABJleGVjdXRlZF9wcm9wb3NhbHMAAAAAAAUAAAAAAAAAAwAAAA8AAAAQZmFpbGVkX3Byb3Bvc2FscwAAAAUAAAAAAAAAAQAAAA8AAAATY2FuY2VsbGVkX3Byb3Bvc2FscwAAAAAFAAAAAAAAAAEAAAAPAAAAEWV4cGlyZWRfcHJvcG9zYWxzAAAAAAAABQAAAAAAAAABAAAADwAAABB2ZXRvZWRfcHJvcG9zYWxzAAAABQAAAAAAAAAB",
+    "expected": {
+      "total_proposals": 10,
+      "active_proposals": 2,
+      "queued_proposals": 1,
+      "executed_proposals": 3,
+      "failed_proposals": 1,
+      "cancelled_proposals": 1,
+      "expired_proposals": 1,
+      "vetoed_proposals": 1
+    }
+  }
 }

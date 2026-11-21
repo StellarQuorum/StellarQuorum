@@ -8,6 +8,7 @@ import VotingPowerPreview from "@/components/VotingPowerPreview";
 import AddToCalendar from "@/components/AddToCalendar";
 import PrintButton from "@/components/PrintButton";
 import ShareButtons from "@/components/ShareButtons";
+import ProposalLifecycleActions from "@/components/ProposalLifecycleActions";
 import { getEnv } from "@/lib/env";
 import { formatDate, t } from "@/lib/i18n";
 
@@ -65,6 +66,8 @@ export default async function ProposalDetailPage({ params }: { params: Promise<{
           </p>
         </section>
       )}
+
+      <ProposalLifecycleActions proposalId={proposal.id} />
 
       {/* Description */}
       <div className="p-5 rounded-xl bg-[#0d1520] border border-[#1a2535] mb-6">

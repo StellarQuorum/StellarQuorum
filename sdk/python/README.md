@@ -1,9 +1,9 @@
 # StellarQuorum Python SDK
 
-Read-only governance queries for Python 3.10+. The package uses the official
-Stellar Python SDK for Soroban transaction encoding and XDR decoding. No
-wallet, secret key, funded account, or signing is needed. Transactions are
-simulated only; this package does not submit transactions.
+Governance reads and unsigned transaction builders for Python 3.10+. The package
+uses the official Stellar Python SDK for Soroban transaction encoding and XDR
+decoding. No wallet, secret key, or signing is needed. Builders simulate and
+prepare transactions, but this package does not sign or submit them.
 
 ## Install from source
 
@@ -47,9 +47,19 @@ with QuorumClient(config) as client:
     support = client.get_vote(1, "G...")  # replace with a voter address
     # None = no vote; 0 = Against; 1 = For; 2 = Abstain.
     print(support)
+
+    phase = client.get_proposal_phase(1)
+    quorum_bps = client.get_quorum_progress(1)
+    delegate = client.get_delegate("G...")
+    past_votes = client.get_past_votes("G...", 12345)
+    stats = client.get_governance_stats()
+
+    # Builders return unsigned base64 XDR. Sign and submit it with a wallet
+    # or transaction service that you control.
+    unsigned_xdr = client.build_finalize("G...", 1)
 ```
 
-`Proposal` and `GovernanceConfig` are frozen dataclasses with the TypeScript
+`Proposal`, `GovernanceConfig`, and `GovernanceStats` are frozen dataclasses with the TypeScript
 SDK's fields in snake_case. Addresses are Stellar strkey strings, statuses
 are `Pending`, `Active`, `Passed`, `Failed`, `Queued`, `Executed`, or
 `Cancelled`, and all u64/i128 values use arbitrary-precision Python `int`.
@@ -61,8 +71,15 @@ contract error number when present. Transport and invalid-XDR errors propagate.
 `get_all_proposals()` reads the count then simulates each requested proposal
 in order, omitting deleted/missing proposals. `get_proposal_count()` is also
 available. Reads are synchronous, uncached, and do not use JSON-RPC batching.
-Contract initialization and write transaction building remain in the TypeScript
-SDK. Call `close()` when done, or use the context manager above.
+`get_proposal_phase()` returns the contract-derived phase, including `Ended` and
+`ReadyToExecute`; `get_quorum_progress()` returns basis points capped at 10,000.
+`get_governance_stats()` includes the contract's total, status, and vote counters.
+`get_delegate()` returns the active delegate, while `get_past_votes()` reads
+effective voting power at a u32 ledger. `build_create_proposal()`, `build_vote()`,
+`build_finalize()`, and `build_execute()` return unsigned base64 XDR, with the
+same argument encoding as the TypeScript SDK. Builders load the source account
+and simulate/prepare the transaction; clients remain responsible for signing
+and submitting it. Call `close()` when done, or use the context manager above.
 
 ## Contributor checks
 
