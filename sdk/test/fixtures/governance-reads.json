@@ -16,9 +16,14 @@
       "end_ledger": 2000,
       "queue_ledger": 0,
       "quorum_required": "50",
-      "status": "Active"
+      "timelock_period": 0,
+      "execution_grace_period": 0,
+      "status": "Active",
+      "metadata_uri": "",
+      "kind": "Executable"
     }
   },
+  "proposalStatuses": ["Active", "Failed", "Queued", "Executed", "Cancelled", "Expired", "Vetoed"],
   "config": {
     "xdr": "AAAAEQAAAAEAAAAGAAAADwAAAAVhZG1pbgAAAAAAABIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwAAABJwcm9wb3NhbF90aHJlc2hvbGQAAAAAAAoAAAAAAAAAAAAgAAAAAAABAAAADwAAAApxdW9ydW1fYnBzAAAAAAADAAATiAAAAA8AAAAPdGltZWxvY2tfcGVyaW9kAAAAAAMAAAAKAAAADwAAAAV0b2tlbgAAAAAAABIAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAAAPAAAADXZvdGluZ19wZXJpb2QAAAAAAAADAAAAZA==",
     "expected": {

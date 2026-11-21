@@ -42,6 +42,8 @@ export enum GovernanceError {
   VotingNotStarted = 34,
   TooManyActions = 35,
   ActionFailed = 36,
+  TokenDelegationFailed = 37,
+  ActionAddedAfterVotingStarted = 38,
 }
 
 /** Mirror of `TokenError` in contracts/token/src/lib.rs. Same rules as above. */
@@ -58,6 +60,7 @@ export enum TokenError {
   NotStaked = 12,
   AlreadyStaked = 11,
   LockNotExpired = 13,
+  NotInitialized = 14,
   InvalidDuration = 10,
 }
 
@@ -99,6 +102,8 @@ export const GOVERNANCE_ERROR_MESSAGES: Readonly<Record<GovernanceError, string>
   [GovernanceError.VotingNotStarted]: 'The voting period has not started',
   [GovernanceError.TooManyActions]: 'The proposal contains too many actions',
   [GovernanceError.ActionFailed]: 'A proposal action failed',
+  [GovernanceError.TokenDelegationFailed]: 'The token contract rejected the delegation update',
+  [GovernanceError.ActionAddedAfterVotingStarted]: 'Proposal actions cannot change after voting starts',
 };
 
 /** A typed error for any governance code without a specialized SDK subclass. */

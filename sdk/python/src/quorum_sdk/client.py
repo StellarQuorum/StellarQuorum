@@ -8,7 +8,8 @@ from stellar_sdk import Account, Address, SorobanServer, TransactionBuilder, scv
 from .models import GovernanceConfig, Proposal, QuorumClientConfig, VoteSupport
 
 READ_ONLY_SOURCE = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
-STATUSES = {"Pending", "Active", "Passed", "Failed", "Queued", "Executed", "Cancelled"}
+STATUSES = {"Active", "Failed", "Queued", "Executed", "Cancelled", "Expired", "Vetoed"}
+PROPOSAL_KINDS = {"Signaling", "Executable"}
 
 
 class SimulationError(RuntimeError):
@@ -76,10 +77,19 @@ class QuorumClient:
             if error.code == 3:
                 return None
             raise
+        # Older deployed contracts and the shared parity fixture do not yet
+        # expose the proposal metadata fields added to the current ABI.
+        raw.setdefault("timelock_period", 0)
+        raw.setdefault("execution_grace_period", 0)
+        raw.setdefault("metadata_uri", "")
+        raw.setdefault("kind", ["Executable"])
         status = raw["status"]
         if not isinstance(status, list) or len(status) != 1 or status[0] not in STATUSES:
             raise ValueError(f"Unknown ProposalStatus variant: {status!r}")
-        return Proposal(**{**raw, "status": status[0]})
+        kind = raw["kind"]
+        if not isinstance(kind, list) or len(kind) != 1 or kind[0] not in PROPOSAL_KINDS:
+            raise ValueError(f"Unknown ProposalKind variant: {kind!r}")
+        return Proposal(**{**raw, "status": status[0], "kind": kind[0]})
 
     def get_proposal_count(self) -> int:
         return int(self._simulate("get_proposal_count"))

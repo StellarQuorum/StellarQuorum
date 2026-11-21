@@ -3,7 +3,10 @@
 from dataclasses import dataclass
 from typing import Literal
 
-ProposalStatus = Literal["Pending", "Active", "Passed", "Failed", "Queued", "Executed", "Cancelled"]
+ProposalStatus = Literal[
+    "Active", "Failed", "Queued", "Executed", "Cancelled", "Expired", "Vetoed"
+]
+ProposalKind = Literal["Signaling", "Executable"]
 VoteSupport = Literal[0, 1, 2]
 
 
@@ -21,7 +24,11 @@ class Proposal:
     end_ledger: int
     queue_ledger: int
     quorum_required: int
+    timelock_period: int
+    execution_grace_period: int
     status: ProposalStatus
+    metadata_uri: str
+    kind: ProposalKind
 
 
 @dataclass(frozen=True)

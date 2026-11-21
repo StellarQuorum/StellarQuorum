@@ -22,7 +22,8 @@ test('decodes the exact proposal fixture consumed by Python, without precision l
     forVotes: BigInt(expected.for_votes), againstVotes: BigInt(expected.against_votes), abstainVotes: BigInt(expected.abstain_votes),
     snapshotLedger: expected.snapshot_ledger, startLedger: expected.start_ledger, endLedger: expected.end_ledger,
     queueLedger: expected.queue_ledger, quorumRequired: BigInt(expected.quorum_required), status: expected.status,
-    timelockPeriod: 0, kind: 'Standard',
+    timelockPeriod: expected.timelock_period, executionGracePeriod: expected.execution_grace_period,
+    metadataUri: expected.metadata_uri, kind: expected.kind,
   });
 });
 

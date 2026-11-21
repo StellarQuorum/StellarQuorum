@@ -11,13 +11,19 @@ export type ProposalPhase = 'Pending' | 'Voting' | 'TimelockPending' | ProposalS
 
 export type VoteSupport = 0 | 1 | 2; // 0=Against 1=For 2=Abstain
 
-export type ProposalKind = 'Standard' | 'Upgrade';
+export type ProposalKind = 'Signaling' | 'Executable';
 
 /** On-chain action attached to an executable proposal. */
 export interface ProposalAction {
   targetContractId: string;
   functionName: string;
   args: unknown[];
+}
+
+export interface StakeInfo {
+  ledger: number;
+  amount: bigint;
+  unlockLedger: number;
 }
 
 export interface Proposal {
@@ -99,7 +105,8 @@ export type ReadMethod =
   | 'getLatestLedger' | 'getVotingPower' | 'getBalance' | 'getTokenDecimals'
   | 'balance' | 'getPastBalance' | 'allowance' | 'totalSupply'
   | 'getProposalsByProposer' | 'getPastTotalSupply'
-  | 'getCosponsors' | 'getConviction';
+  | 'lockedBalance' | 'spendableBalance' | 'getProposalActions' | 'getCosponsors'
+  | 'isTargetAllowed' | 'stakeInfo' | 'getConviction';
 
 export interface ReadCacheConfig {
   enabled: boolean;

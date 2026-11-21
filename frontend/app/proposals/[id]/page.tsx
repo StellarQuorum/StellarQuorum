@@ -8,6 +8,7 @@ import VotingPowerPreview from "@/components/VotingPowerPreview";
 import AddToCalendar from "@/components/AddToCalendar";
 import PrintButton from "@/components/PrintButton";
 import ShareButtons from "@/components/ShareButtons";
+import CopyAddressButton from "@/components/CopyAddressButton";
 import { getEnv } from "@/lib/env";
 import { formatDate, t } from "@/lib/i18n";
 
@@ -23,6 +24,11 @@ export default async function ProposalDetailPage({ params }: { params: Promise<{
       </div>
     );
   }
+
+  const explorerNetwork = getEnv().networkPassphrase.startsWith("Public ") ? "public" : "testnet";
+  const shortenAddress = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`;
+  const stringifyArgs = (args: unknown[]) => JSON.stringify(args, (_key, value: unknown) =>
+    typeof value === "bigint" ? value.toString() : value, 2);
 
 
   return (
@@ -44,6 +50,17 @@ export default async function ProposalDetailPage({ params }: { params: Promise<{
         <h1 className="text-3xl font-bold text-white mb-4">{proposal.title}</h1>
         <div className="flex items-center gap-6 text-sm text-slate-500 flex-wrap">
           <span className="flex items-center gap-1.5"><User size={13} /> {proposal.proposer}</span>
+          {proposal.cosponsors && proposal.cosponsors.length > 0 && (
+            <div aria-label="Co-sponsors" className="flex items-center gap-2 flex-wrap text-sm text-slate-500">
+              <span>Co-sponsors:</span>
+              {proposal.cosponsors.map(address => (
+                <span key={address} className="inline-flex items-center gap-1.5 font-mono text-xs text-slate-300">
+                  <span title={address}>{shortenAddress(address)}</span>
+                  <CopyAddressButton address={address} />
+                </span>
+              ))}
+            </div>
+          )}
           <span className="flex items-center gap-1.5"><Clock size={13} /> {t("proposals.votingDates", { start: formatDate(proposal.startTime), end: formatDate(proposal.endTime) })}</span>
           <AddToCalendar proposal={proposal} />
         </div>
@@ -80,7 +97,16 @@ export default async function ProposalDetailPage({ params }: { params: Promise<{
             {proposal.actions.map((action, i) => (
               <div key={i} className="p-3 rounded-lg bg-[#080c10] border border-[#1a2535] text-sm">
                 <div className="text-slate-200 font-medium mb-1">{action.description}</div>
-                <div className="font-mono text-xs text-slate-500">{action.contractAddress} → {action.functionName}()</div>
+                <div className="flex flex-wrap items-center gap-x-2 font-mono text-xs text-slate-500">
+                  <a href={`https://stellar.expert/explorer/${explorerNetwork}/contract/${encodeURIComponent(action.contractAddress)}`} target="_blank" rel="noreferrer" className="text-blue-300 hover:text-blue-200 underline underline-offset-2">
+                    {action.contractAddress}
+                  </a>
+                  <span>→ {action.functionName}()</span>
+                  {action.allowed === false && <span className="rounded bg-rose-950 px-2 py-0.5 text-rose-300">Target no longer allowlisted</span>}
+                </div>
+                {action.args && action.args.length > 0 && (
+                  <pre className="mt-2 overflow-x-auto rounded bg-[#0d1520] p-2 text-xs text-slate-300">{stringifyArgs(action.args)}</pre>
+                )}
               </div>
             ))}
           </div>

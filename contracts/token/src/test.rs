@@ -1488,6 +1488,19 @@ fn funded_holder(env: &Env, admin: &Address, token: &QuorumTokenClient<'_>, amou
 }
 
 #[test]
+fn stake_boost_preview_matches_the_first_post_stake_snapshot() {
+    let env = Env::default();
+    let (_admin, token) = deploy(&env);
+    let amount = 365_000_i128;
+    let duration = MAX_LOCK_LEDGERS;
+    assert_eq!(token.preview_stake_boost(&amount, &duration), amount * i128::from(duration - 1) / i128::from(MAX_LOCK_LEDGERS));
+    assert_eq!(
+        token.try_preview_stake_boost(&amount, &(MIN_LOCK_LEDGERS - 1)),
+        Err(Ok(TokenError::InvalidDuration)),
+    );
+}
+
+#[test]
 fn stake_locks_part_of_the_balance_without_changing_it() {
     let env = Env::default();
     let (admin, token) = deploy(&env);

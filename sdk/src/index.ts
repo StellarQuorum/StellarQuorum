@@ -36,4 +36,4 @@ export type {
   UpgradedEvent,
   VoteCastEvent,
 } from './events.js';
-export type { Proposal, ProposalStatus, ConvictionTally, GovernanceConfig, QuorumClientConfig, VoteSupport, GetProposalsOptions, TransactionConfirmationOptions, WaitForStatusOptions, FeeEstimate, ReadMethod, ReadCacheConfig, ReadOptions } from './types.js';
+export type { Proposal, ProposalAction, StakeInfo, ProposalStatus, ConvictionTally, GovernanceConfig, ContractVersions, QuorumClientConfig, VoteSupport, GetProposalsOptions, TransactionConfirmationOptions, WaitForStatusOptions, FeeEstimate, ReadMethod, ReadCacheConfig, ReadOptions, GovernanceStats } from './types.js';

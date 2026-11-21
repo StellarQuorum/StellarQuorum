@@ -12,6 +12,8 @@ export interface ProposalAction {
   description: string;
   contractAddress: string;
   functionName: string;
+  args?: unknown[];
+  allowed?: boolean;
 }
 
 export interface Proposal {
@@ -34,5 +36,6 @@ export interface Proposal {
   actions: ProposalAction[];
   votes: Vote[];
   category: string;
+  cosponsors?: string[];
   veto?: { guardian: string; reason: string };
 }

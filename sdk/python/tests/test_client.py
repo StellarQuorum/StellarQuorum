@@ -69,6 +69,17 @@ def test_proposal_matches_typescript_fixture_and_encodes_unsigned_read(rpc):
     assert invoke.args[0].type.name == "SCV_U64"
 
 
+@pytest.mark.parametrize("status", FIXTURE["proposalStatuses"])
+def test_every_contract_proposal_status_decodes(rpc, status):
+    client, state = rpc
+    value = xdr.SCVal.from_xdr(FIXTURE["proposal"]["xdr"])
+    for entry in value.map.sc_map:
+        if scval.to_native(entry.key) == "status":
+            entry.val = scval.to_vec([scval.to_symbol(status)])
+    state["reply"] = lambda _method, _args: result(value.to_xdr())
+    assert client.get_proposal(1).status == status
+
+
 def test_config_matches_typescript_fixture(rpc):
     client, state = rpc
     state["reply"] = lambda method, args: result(FIXTURE["config"]["xdr"])

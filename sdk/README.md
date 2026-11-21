@@ -177,6 +177,27 @@ Available admin builders:
 - `buildCancelAdminTransfer(admin)` — cancel a pending transfer
 - `buildUpgrade(admin, wasmHash)` — replace the governance contract WASM
 
+### Proposal actions and co-sponsors
+
+The SDK reads the executable calls and co-sponsor addresses stored on a
+proposal. Action arguments are returned in contract order as decoded Soroban
+values; `isTargetAllowed()` reports whether each target is still permitted.
+
+```typescript
+const [actions, cosponsors] = await Promise.all([
+  client.getProposalActions(proposalId),
+  client.getCosponsors(proposalId),
+]);
+const allowed = await Promise.all(actions.map(action => client.isTargetAllowed(action.targetContractId)));
+```
+
+### Stake reads and boost preview
+
+`getStake(holder)` returns the active amount and its start and unlock ledgers,
+or `null` when the holder has no lock. `previewStakeBoost()` uses the token
+contract view and accounts for the one-ledger delay before a new stake affects
+a snapshot. `buildStake()` and `buildUnstake()` return unsigned XDR as usual.
+
 ## Contract errors
 
 `GovernanceError` and `TokenError` mirror the Rust `#[contracterror]` enums;

@@ -149,7 +149,9 @@ describe('result decoding', () => {
       quorumRequired: 50n,
       status: 'Active',
       timelockPeriod: 10,
-      kind: 'Standard',
+      executionGracePeriod: 0,
+      metadataUri: '',
+      kind: 'Executable',
     });
   });
 
@@ -166,9 +168,43 @@ describe('result decoding', () => {
     await expect(client.getProposal(7n)).rejects.toThrow('Unknown ProposalStatus variant: Ghost');
   });
 
+  it.each(['Active', 'Failed', 'Queued', 'Executed', 'Cancelled', 'Expired', 'Vetoed'] as const)(
+    'decodes ProposalStatus %s', async status => {
+      returns(structVal({ ...proposalFields, status: enumVariant(status) }));
+      await expect(client.getProposal(7n)).resolves.toMatchObject({ status });
+    },
+  );
+
+  it('rejects an unknown ProposalKind variant', async () => {
+    returns(structVal({ ...proposalFields, kind: enumVariant('Unknown') }));
+    await expect(client.getProposal(7n)).rejects.toThrow('Unknown ProposalKind variant: Unknown');
+  });
+
   it('decodes get_proposal_count as bigint', async () => {
     returns(nativeToScVal(4n, { type: 'u64' }));
     expect(await client.getProposalCount()).toBe(4n);
+  });
+
+  it('decodes ordered proposal actions, co-sponsors, and current allowlist state', async () => {
+    const action = structVal({
+      target: new Address(TOKEN).toScVal(),
+      function: nativeToScVal('transfer', { type: 'symbol' }),
+      args: xdr.ScVal.scvVec([nativeToScVal(42n, { type: 'i128' })]),
+    });
+    returns(xdr.ScVal.scvVec([action]));
+    expect(await client.getProposalActions(7n)).toEqual([
+      { targetContractId: TOKEN, functionName: 'transfer', args: [42n] },
+    ]);
+    expect(lastCall().method).toBe('get_proposal_actions');
+    expect(scValToNative(lastCall().args[0])).toBe(7n);
+
+    returns(xdr.ScVal.scvVec([new Address(VOTER).toScVal()]));
+    await expect(client.getCosponsors(7n)).resolves.toEqual([VOTER]);
+    expect(lastCall().method).toBe('get_cosponsors');
+
+    returns(nativeToScVal(false, { type: 'bool' }));
+    await expect(client.isTargetAllowed(TOKEN)).resolves.toBe(false);
+    expect(lastCall().method).toBe('is_target_allowed');
   });
 
   it('decodes Config', async () => {
@@ -404,7 +440,8 @@ describe('governance and token history views', () => {
       id: 7n, proposer: VOTER, title: 'Raise quorum', description: 'Details',
       forVotes: 100n, againstVotes: 20n, abstainVotes: 5n,
       snapshotLedger: 999, startLedger: 1000, endLedger: 2000, queueLedger: 0,
-      quorumRequired: 50n, status: 'Active', timelockPeriod: 10, kind: 'Standard',
+      quorumRequired: 50n, status: 'Active', timelockPeriod: 10, executionGracePeriod: 0,
+      metadataUri: '', kind: 'Executable',
     });
   });
 
@@ -412,6 +449,26 @@ describe('governance and token history views', () => {
     returns(xdr.ScVal.scvVec([]));
     expect(await client.getProposalsByProposer(VOTER)).toEqual([]);
     expect(lastCall().method).toBe('get_proposals_by_proposer');
+  });
+
+  it('reads stake amount and unlock ledger from the token contract', async () => {
+    returns(structVal({
+      ledger: nativeToScVal(100, { type: 'u32' }),
+      amount: nativeToScVal(1_000n, { type: 'i128' }),
+      unlock_ledger: nativeToScVal(200, { type: 'u32' }),
+    }));
+    await expect(client.getStake(VOTER)).resolves.toEqual({ ledger: 100, amount: 1_000n, unlockLedger: 200 });
+    expect(callAddress()).toBe(CONTRACT);
+    expect(lastCall().method).toBe('get_stake');
+  });
+
+  it('previews boost using the contract view that accounts for the first ledger delay', async () => {
+    returns(nativeToScVal(999n, { type: 'i128' }));
+    await expect(client.previewStakeBoost(1_000n, 365 * 17_280)).resolves.toBe(999n);
+    expect(callAddress()).toBe(CONTRACT);
+    expect(lastCall().method).toBe('preview_stake_boost');
+    expect(scValToNative(lastCall().args[0])).toBe(1_000n);
+    expect(scValToNative(lastCall().args[1])).toBe(365 * 17_280);
   });
 
   it('get_proposals_by_proposer reuses the read cache per proposer', async () => {

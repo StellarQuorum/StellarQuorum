@@ -26,16 +26,17 @@ export const TOKEN_DECIMALS = 7;
 let versionCheck: Promise<void> | undefined;
 
 /** A QuorumClient pointed at the configured network. */
-export async function createQuorumClient(): Promise<QuorumClient> {
+export async function createQuorumClient(options: { withToken?: boolean } = {}): Promise<QuorumClient> {
   // Imported lazily so fixture mode (and its tests) never load the Stellar SDK.
   const { QuorumClient, TESTNET } = await import("@quorum/sdk");
-  const client = new QuorumClient({
+  const config = {
     rpcUrl: env.stellarRpcUrl || TESTNET.rpcUrl!,
     networkPassphrase: env.networkPassphrase || TESTNET.networkPassphrase!,
     // Validated in loadEnv, so this is a contract ID or nothing.
     governanceContractId: env.governanceContractId!,
     tokenContractId: env.tokenContractId ?? "",
-  });
+  };
+  const client = new QuorumClient(config);
   // Check once per server process on the first live SDK use. A failed version
   // lookup must not prevent the page from serving; a version mismatch itself
   // is reported by the SDK as a clear warning.
@@ -46,5 +47,8 @@ export async function createQuorumClient(): Promise<QuorumClient> {
       versionCheck = undefined;
     });
   await versionCheck;
+  if (options.withToken && !env.tokenContractId) {
+    return new QuorumClient({ ...config, tokenContractId: (await client.getConfig()).token });
+  }
   return client;
 }

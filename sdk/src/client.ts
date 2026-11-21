@@ -1,5 +1,5 @@
 import { rpc, Contract, Transaction, TransactionBuilder, BASE_FEE, nativeToScVal, scValToNative, Address, Account, xdr } from '@stellar/stellar-sdk';
-import type { Proposal, ConvictionTally, GovernanceConfig, QuorumClientConfig, VoteSupport, GetProposalsOptions, ProposalStatus, TransactionConfirmationOptions, WaitForStatusOptions, FeeEstimate, ReadMethod, ReadOptions } from './types.js';
+import type { Proposal, ProposalAction, StakeInfo, ConvictionTally, GovernanceConfig, ContractVersions, QuorumClientConfig, VoteSupport, GetProposalsOptions, ProposalStatus, TransactionConfirmationOptions, WaitForStatusOptions, FeeEstimate, ReadMethod, ReadOptions, GovernanceStats } from './types.js';
 import { ReadCache } from './cache.js';
 import { SimulationBatcher, postSimulationBatch } from './batch.js';
 import { GovernanceContractError, GOVERNANCE_ERROR_MESSAGES, GovernanceError, governanceErrorFromCode, parseGovernanceError, RpcTimeoutError, TransactionFailedError, contractErrorCode } from './errors.js';
@@ -240,6 +240,27 @@ export class QuorumClient {
   async getProposalCount(options?: ReadOptions): Promise<bigint> {
     return this.cache.read('getProposalCount', [], options, async () =>
       BigInt(await this.simulate<bigint | number>('get_proposal_count')));
+  }
+
+  /** Actions executed by a proposal, in on-chain order. */
+  async getProposalActions(id: bigint, options?: ReadOptions): Promise<ProposalAction[]> {
+    return this.cache.read('getProposalActions', [id], options, async () => {
+      const raw = await this.simulate<Array<{ target: string; function: string; args: unknown[] }>>(
+        'get_proposal_actions', nativeToScVal(id, { type: 'u64' }),
+      );
+      return raw.map(action => ({
+        targetContractId: action.target,
+        functionName: action.function,
+        args: action.args,
+      }));
+    });
+  }
+
+  /** Whether a proposal action target is currently permitted by governance. */
+  async isTargetAllowed(target: string, options?: ReadOptions): Promise<boolean> {
+    return this.cache.read('isTargetAllowed', [target], options, async () =>
+      this.simulate<boolean>('is_target_allowed', new Address(target).toScVal()),
+    );
   }
 
   async getLatestLedger(options?: ReadOptions): Promise<number> {
@@ -1137,6 +1158,16 @@ export class QuorumClient {
     });
   }
 
+  /** Current active lock details, or null when the holder has no stake. */
+  async getStake(holder: string, options?: ReadOptions): Promise<StakeInfo | null> {
+    return this.cache.read('stakeInfo', [holder], options, async () => {
+      const raw = await this.simulateToken<{ ledger: number; amount: bigint; unlock_ledger: number } | null>(
+        'get_stake', new Address(holder).toScVal(),
+      );
+      return raw ? { ledger: raw.ledger, amount: BigInt(raw.amount), unlockLedger: raw.unlock_ledger } : null;
+    });
+  }
+
   /**
    * Liquid (non-locked) balance: `balance - lockedBalance`.
    * This is the amount the holder can transfer or approve immediately.
@@ -1151,11 +1182,12 @@ export class QuorumClient {
   /**
    * Preview the vote-power multiplier for a given `amount` and `durationLedgers`.
    * Returns the boosted voting power (not the multiplier ratio) as the contract
-   * would compute it via `lock_boost(amount, duration)`.
+   * would report on the first ledger after staking, including the one-ledger
+   * delay before a new stake contributes to a snapshot.
    */
   async previewStakeBoost(amount: bigint, durationLedgers: number, options?: ReadOptions): Promise<bigint> {
     const raw = await this.simulateToken<bigint | number>(
-      'lock_boost',
+      'preview_stake_boost',
       nativeToScVal(amount, { type: 'i128' }),
       nativeToScVal(durationLedgers, { type: 'u32' }),
     );
@@ -1319,8 +1351,8 @@ function decodeProposal(raw: RawProposal): Proposal {
     status: decodeStatus(raw.status),
     timelockPeriod: raw.timelock_period ?? 0,
     executionGracePeriod: raw.execution_grace_period ?? 0,
-    ...(raw.metadata_uri === undefined ? {} : { metadataUri: raw.metadata_uri }),
-    kind: raw.kind ? (raw.kind[0] as 'Standard' | 'Upgrade') : 'Standard',
+    metadataUri: raw.metadata_uri ?? '',
+    kind: decodeKind(raw.kind),
   };
 }
 
@@ -1328,6 +1360,15 @@ function decodeProposal(raw: RawProposal): Proposal {
 const PROPOSAL_STATUSES: readonly ProposalStatus[] = [
   'Active', 'Failed', 'Queued', 'Executed', 'Cancelled', 'Expired', 'Vetoed',
 ];
+const PROPOSAL_KINDS = ['Signaling', 'Executable'] as const;
+
+function decodeKind(raw: [string] | undefined): 'Signaling' | 'Executable' {
+  const name = raw?.[0] ?? 'Executable';
+  if (!(PROPOSAL_KINDS as readonly string[]).includes(name)) {
+    throw new Error(`Unknown ProposalKind variant: ${String(name)}`);
+  }
+  return name as 'Signaling' | 'Executable';
+}
 
 /** Unit enum variant `[name]` → ProposalStatus, rejecting names the SDK does not know. */
 function decodeStatus(raw: [string]): ProposalStatus {

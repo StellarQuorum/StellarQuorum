@@ -296,6 +296,24 @@ impl QuorumToken {
         Self::locked_amount(&env, &owner)
     }
 
+    /// Current active stake, including its start and unlock ledgers.
+    pub fn get_stake(env: Env, owner: Address) -> Option<Lock> {
+        Self::current_lock(&Self::locks(&env, &owner))
+    }
+
+    /// Preview the boost visible from the first ledger after a new stake.
+    /// The first snapshot follows the staking ledger, so one ledger has already
+    /// elapsed when that voting power is measured.
+    pub fn preview_stake_boost(_env: Env, amount: i128, duration: u32) -> Result<i128, TokenError> {
+        if amount <= 0 { return Err(TokenError::InvalidAmount); }
+        if !(MIN_LOCK_LEDGERS..=MAX_LOCK_LEDGERS).contains(&duration) {
+            return Err(TokenError::InvalidDuration);
+        }
+        let remaining = i128::from(duration - 1);
+        let scale = i128::from(MAX_LOCK_LEDGERS);
+        Ok((amount / scale) * remaining + (amount % scale) * remaining / scale)
+    }
+
     pub fn total_supply(env: Env) -> i128 {
         Self::touch_instance(&env);
         env.storage().instance().get(&DataKey::TotalSupply).unwrap_or(0)

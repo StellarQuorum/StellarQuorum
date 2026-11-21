@@ -21,6 +21,10 @@ function makeProposal(id: bigint, status: Proposal['status'] = 'Active'): Propos
     queueLedger: 0,
     quorumRequired: 50n,
     status,
+    timelockPeriod: 0,
+    executionGracePeriod: 0,
+    metadataUri: '',
+    kind: 'Executable',
   };
 }
 

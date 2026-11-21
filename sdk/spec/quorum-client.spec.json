@@ -66,6 +66,42 @@
       "returns": "Promise<bigint>"
     },
     {
+      "name": "getProposalActions",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<ProposalAction[]>"
+    },
+    {
+      "name": "isTargetAllowed",
+      "parameters": [
+        {
+          "name": "target",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<boolean>"
+    },
+    {
       "name": "getLatestLedger",
       "parameters": [
         {
@@ -254,8 +290,14 @@
       "name": "getProposalsByProposer",
       "parameters": [
         {
+          "name": "proposer",
+          "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
           "name": "options",
-          "type": "GetProposalsOptions",
+          "type": "ReadOptions",
           "optional": true,
           "rest": false
         }
@@ -467,6 +509,12 @@
           "name": "description",
           "type": "string",
           "optional": false,
+          "rest": false
+        },
+        {
+          "name": "metadataUri",
+          "type": "string",
+          "optional": true,
           "rest": false
         },
         {
@@ -827,70 +875,10 @@
       "returns": "Promise<string>"
     },
     {
-      "name": "buildPause",
+      "name": "buildStake",
       "parameters": [
         {
-          "name": "admin",
-          "type": "string",
-          "optional": false,
-          "rest": false
-        },
-        {
-          "name": "source",
-          "type": "string",
-          "optional": true,
-          "rest": false
-        }
-      ],
-      "returns": "Promise<string>"
-    },
-    {
-      "name": "buildUnpause",
-      "parameters": [
-        {
-          "name": "admin",
-          "type": "string",
-          "optional": false,
-          "rest": false
-        },
-        {
-          "name": "source",
-          "type": "string",
-          "optional": true,
-          "rest": false
-        }
-      ],
-      "returns": "Promise<string>"
-    },
-    {
-      "name": "buildSetGuardian",
-      "parameters": [
-        {
-          "name": "admin",
-          "type": "string",
-          "optional": false,
-          "rest": false
-        },
-        {
-          "name": "newGuardian",
-          "type": "string",
-          "optional": false,
-          "rest": false
-        },
-        {
-          "name": "source",
-          "type": "string",
-          "optional": true,
-          "rest": false
-        }
-      ],
-      "returns": "Promise<string>"
-    },
-    {
-      "name": "buildSetProposalDeposit",
-      "parameters": [
-        {
-          "name": "admin",
+          "name": "staker",
           "type": "string",
           "optional": false,
           "rest": false
@@ -902,25 +890,7 @@
           "rest": false
         },
         {
-          "name": "source",
-          "type": "string",
-          "optional": true,
-          "rest": false
-        }
-      ],
-      "returns": "Promise<string>"
-    },
-    {
-      "name": "buildSetProposerCooldown",
-      "parameters": [
-        {
-          "name": "admin",
-          "type": "string",
-          "optional": false,
-          "rest": false
-        },
-        {
-          "name": "ledgers",
+          "name": "durationLedgers",
           "type": "number",
           "optional": false,
           "rest": false
@@ -935,16 +905,10 @@
       "returns": "Promise<string>"
     },
     {
-      "name": "buildAllowTarget",
+      "name": "buildUnstake",
       "parameters": [
         {
-          "name": "admin",
-          "type": "string",
-          "optional": false,
-          "rest": false
-        },
-        {
-          "name": "target",
+          "name": "staker",
           "type": "string",
           "optional": false,
           "rest": false
@@ -959,23 +923,95 @@
       "returns": "Promise<string>"
     },
     {
-      "name": "buildDisallowTarget",
+      "name": "lockedBalance",
       "parameters": [
         {
-          "name": "admin",
+          "name": "holder",
           "type": "string",
           "optional": false,
           "rest": false
         },
         {
-          "name": "target",
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "getStake",
+      "parameters": [
+        {
+          "name": "holder",
           "type": "string",
           "optional": false,
           "rest": false
         },
         {
-          "name": "source",
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<StakeInfo | null>"
+    },
+    {
+      "name": "spendableBalance",
+      "parameters": [
+        {
+          "name": "holder",
           "type": "string",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "previewStakeBoost",
+      "parameters": [
+        {
+          "name": "amount",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "durationLedgers",
+          "type": "number",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
+          "optional": true,
+          "rest": false
+        }
+      ],
+      "returns": "Promise<bigint>"
+    },
+    {
+      "name": "getProposalPhase",
+      "parameters": [
+        {
+          "name": "proposalId",
+          "type": "bigint",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "options",
+          "type": "ReadOptions",
           "optional": true,
           "rest": false
         }
@@ -983,59 +1019,35 @@
       "returns": "Promise<string>"
     },
     {
-      "name": "buildTransferAdmin",
+      "name": "getQuorumProgress",
       "parameters": [
         {
-          "name": "admin",
-          "type": "string",
+          "name": "proposalId",
+          "type": "bigint",
           "optional": false,
           "rest": false
         },
         {
-          "name": "newAdmin",
-          "type": "string",
-          "optional": false,
-          "rest": false
-        },
-        {
-          "name": "source",
-          "type": "string",
+          "name": "options",
+          "type": "ReadOptions",
           "optional": true,
           "rest": false
         }
       ],
-      "returns": "Promise<string>"
+      "returns": "Promise<number>"
     },
     {
-      "name": "buildAcceptAdmin",
+      "name": "hasReachedQuorum",
       "parameters": [
         {
-          "name": "pendingAdmin",
-          "type": "string",
+          "name": "proposalId",
+          "type": "bigint",
           "optional": false,
           "rest": false
         },
         {
-          "name": "source",
-          "type": "string",
-          "optional": true,
-          "rest": false
-        }
-      ],
-      "returns": "Promise<string>"
-    },
-    {
-      "name": "buildCancelAdminTransfer",
-      "parameters": [
-        {
-          "name": "admin",
-          "type": "string",
-          "optional": false,
-          "rest": false
-        },
-        {
-          "name": "source",
-          "type": "string",
+          "name": "options",
+          "type": "ReadOptions",
           "optional": true,
           "rest": false
         }
@@ -1052,7 +1064,7 @@
           "rest": false
         }
       ],
-      "returns": "Promise<string>"
+      "returns": "Promise<GovernanceStats>"
     }
   ],
   "errors": {

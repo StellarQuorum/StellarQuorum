@@ -50,10 +50,11 @@ with QuorumClient(config) as client:
 ```
 
 `Proposal` and `GovernanceConfig` are frozen dataclasses with the TypeScript
-SDK's fields in snake_case. Addresses are Stellar strkey strings, statuses
-are `Pending`, `Active`, `Passed`, `Failed`, `Queued`, `Executed`, or
-`Cancelled`, and all u64/i128 values use arbitrary-precision Python `int`.
-Use `dataclasses.asdict()` to convert a result to a dictionary.
+SDK's fields in snake_case, including proposal timelock, execution grace,
+metadata URI, and kind. Proposal statuses are `Active`, `Failed`, `Queued`,
+`Executed`, `Cancelled`, `Expired`, or `Vetoed`; proposal kinds are
+`Signaling` or `Executable`. All u64/i128 values use arbitrary-precision
+Python `int`. Use `dataclasses.asdict()` to convert a result to a dictionary.
 
 `get_proposal()` returns `None` only for contract error 3 (ProposalNotFound).
 Other simulation failures raise `SimulationError`, whose `code` exposes the

@@ -67,4 +67,12 @@ describe("proposal detail page", () => {
     expect(screen.getByText("The recipient address has not completed treasury due diligence.")).toBeInTheDocument();
     expect(screen.getByText("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF")).toBeInTheDocument();
   });
+
+  it("shows co-sponsors with copy controls and decodes proposal action arguments", async () => {
+    await renderDetail("QIP-001");
+    expect(screen.getByLabelText("Co-sponsors")).toBeInTheDocument();
+    expect(screen.getByText("GCO...…SP01")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy GCO...SP01" })).toBeInTheDocument();
+    expect(screen.getByText(/\[\s*500\s*\]/)).toBeInTheDocument();
+  });
 });
