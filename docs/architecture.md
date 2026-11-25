@@ -400,6 +400,8 @@ topic tuple (a symbol first, then identifiers) and a struct payload.
 | `("deposit_forfeited", id)` | `DepositForfeited { id, amount }` | `finalize`, when the proposal fails; `cancel`, once voting is open |
 | `("target_allowlist_updated", target)` | `TargetAllowlistUpdated { admin, target, allowed }` | `allow_target`, `disallow_target` |
 | `("proposal_action_set", id)` | `ProposalActionSet { id, target, function }` | `set_proposal_action` |
+| `("action_executed", id)` | `ActionExecuted { id, index, target, function }` | `execute`, once per action after its call succeeds, before `proposal_executed` |
+| `("delegated", delegator, delegatee)` | `Delegated { delegator, delegatee }` | `delegate`, `undelegate`, when the representative changes |
 
 Co-sponsors are not in `ProposalCreated`; read them with `get_cosponsors`.
 

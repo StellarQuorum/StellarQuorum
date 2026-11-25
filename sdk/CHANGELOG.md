@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `MIGRATIONS.md` records breaking changes with before and after examples, and
   `scripts/codemod-fee-source.mjs` automates the 0.2.0 `buildFinalize` and
   `buildExecute` update. See [MIGRATIONS.md](MIGRATIONS.md).
+- `buildUpdateGuardian(guardian, newGuardian)` builds the transaction that lets
+  the current guardian hand the veto role to a new address.
+- `ActionExecutedEvent` decodes the `action_executed` event, emitted once per
+  action that `execute()` dispatches.
 
 ## [0.1.0] - 2026-09-26
 

@@ -985,6 +985,20 @@ export class QuorumClient {
   }
 
   /**
+   * Builds signable XDR for `update_guardian(caller, new_guardian)`. The current
+   * guardian must authorize the transaction; the admin cannot use this path.
+   * @throws {GovernanceContractError} for Unauthorized or other contract errors.
+   */
+  async buildUpdateGuardian(guardian: string, newGuardian: string, source?: string): Promise<string> {
+    return this.buildGovernanceTransaction(
+      source ?? guardian,
+      'update_guardian',
+      new Address(guardian).toScVal(),
+      new Address(newGuardian).toScVal(),
+    );
+  }
+
+  /**
    * Builds signable XDR for `vote(voter, proposal_id, support)` (issue #114).
    *
    * Casts a vote on an active proposal. `support` is `0` (Against), `1` (For),

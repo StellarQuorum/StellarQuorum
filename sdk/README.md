@@ -93,7 +93,7 @@ for (const event of decodeEvents(rpcEvents)) {
 ```
 
 Covers `proposal_created`, `vote_cast`, `proposal_finalized`,
-`proposal_queued`, `proposal_executed`, `proposal_cancelled`, `proposal_expired`, `transfer`,
+`proposal_queued`, `proposal_executed`, `action_executed`, `proposal_cancelled`, `proposal_expired`, `transfer`,
 `mint`, `burn`, `approve` and `admin_transferred`. Unknown topics decode to
 `null` instead of throwing.
 

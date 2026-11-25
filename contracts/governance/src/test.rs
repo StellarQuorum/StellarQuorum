@@ -3920,6 +3920,34 @@ fn execute_when_ready(env: &Env, governance: &GovernanceContractClient, admin: &
 }
 
 #[test]
+fn each_dispatched_action_emits_action_executed_in_order() {
+    let env = Env::default();
+    let (admin, recorder_id, governance_id, id) = open_with_recorder(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    for value in [7u32, 8] {
+        governance.set_proposal_action(&admin, &id, &recorder_id, &Symbol::new(&env, "record"), &record_args(&env, value));
+    }
+
+    assert_eq!(execute_when_ready(&env, &governance, &admin, id), Ok(()));
+
+    let mut announced = soroban_sdk::Vec::<ActionExecuted>::new(&env);
+    for (topics, data) in governance_events(&env, &governance_id).iter() {
+        if Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap() == Symbol::new(&env, "action_executed") {
+            announced.push_back(ActionExecuted::try_from_val(&env, &data).unwrap());
+        }
+    }
+    assert_eq!(announced.len(), 2);
+    assert_eq!(
+        announced.get(0).unwrap(),
+        ActionExecuted { id, index: 0, target: recorder_id.clone(), function: Symbol::new(&env, "record") }
+    );
+    assert_eq!(
+        announced.get(1).unwrap(),
+        ActionExecuted { id, index: 1, target: recorder_id.clone(), function: Symbol::new(&env, "record") }
+    );
+}
+
+#[test]
 fn execute_calls_the_target_with_the_attached_arguments() {
     let env = Env::default();
     let (admin, recorder_id, governance_id, id) = open_with_recorder(&env);
@@ -4053,6 +4081,49 @@ fn a_replaced_guardian_can_no_longer_veto_and_the_new_one_can() {
     );
     governance.veto(&new_guardian, &id, &veto_reason(&env));
     assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Vetoed);
+}
+
+#[test]
+fn the_guardian_can_hand_the_role_to_a_new_guardian() {
+    let env = Env::default();
+    let (admin, _, governance_id, id) = open_with_action_target(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let previous_guardian = governance.get_config().guardian;
+    let new_guardian = Address::generate(&env);
+
+    governance.update_guardian(&previous_guardian, &new_guardian);
+
+    let (topics, data) = last_governance_event(&env, &governance_id);
+    assert_eq!(Symbol::try_from_val(&env, &topics.get(0).unwrap()).unwrap(), Symbol::new(&env, "guardian_changed"));
+    assert_eq!(
+        GuardianChanged::try_from_val(&env, &data).unwrap(),
+        GuardianChanged { previous_guardian: previous_guardian.clone(), new_guardian: new_guardian.clone() }
+    );
+    assert_eq!(governance.get_config().guardian, new_guardian);
+
+    // From here on the new guardian holds the veto and the previous one does not.
+    queue_proposal(&env, &governance, &admin, id);
+    assert_eq!(
+        governance.try_veto(&previous_guardian, &id, &veto_reason(&env)),
+        Err(Ok(GovernanceError::Unauthorized))
+    );
+    governance.veto(&new_guardian, &id, &veto_reason(&env));
+    assert_eq!(governance.get_proposal(&id).status, ProposalStatus::Vetoed);
+}
+
+#[test]
+fn only_the_current_guardian_can_call_update_guardian() {
+    let env = Env::default();
+    let (admin, _, governance_id, _) = open_with_action_target(&env);
+    let governance = GovernanceContractClient::new(&env, &governance_id);
+    let previous_guardian = governance.get_config().guardian;
+
+    // The admin is not the guardian, so it cannot rotate the role through this path.
+    assert_eq!(
+        governance.try_update_guardian(&admin, &Address::generate(&env)),
+        Err(Ok(GovernanceError::Unauthorized))
+    );
+    assert_eq!(governance.get_config().guardian, previous_guardian);
 }
 
 #[test]

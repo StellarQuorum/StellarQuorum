@@ -352,6 +352,18 @@ pub struct ProposalActionSet {
     pub function: Symbol,
 }
 
+/// Emitted once for each action `execute()` dispatches, after that call
+/// succeeds. `index` is the action's position in the order they were added,
+/// so an indexer can match a callee's own events to the action that caused them.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActionExecuted {
+    pub id: u64,
+    pub index: u32,
+    pub target: Address,
+    pub function: Symbol,
+}
+
 /// The status stored with each proposal. `Pending` (before voting opens) and
 /// `Passed` are not stored: `get_proposal_phase` derives them from the ledger
 /// window and the proposal kind.
@@ -839,11 +851,22 @@ impl GovernanceContract {
         // A failing action returns an error instead of trapping. Returning Err
         // rolls back this whole invocation, so the proposal stays Queued and
         // no earlier action's effects are kept.
+        let mut index: u32 = 0;
         for action in actions.iter() {
             let result = env.try_invoke_contract::<Val, soroban_sdk::Error>(&action.target, &action.function, action.args.clone());
             if !matches!(result, Ok(Ok(_))) {
                 return Err(GovernanceError::ActionFailed);
             }
+            env.events().publish(
+                (Symbol::new(&env, "action_executed"), proposal_id),
+                ActionExecuted {
+                    id: proposal_id,
+                    index,
+                    target: action.target.clone(),
+                    function: action.function.clone(),
+                },
+            );
+            index += 1;
         }
 
         env.events().publish(
@@ -1196,6 +1219,29 @@ impl GovernanceContract {
     pub fn set_guardian(env: Env, new_guardian: Address) -> Result<(), GovernanceError> {
         let mut config: Config = Self::require_config(&env)?;
         config.admin.require_auth();
+        let previous_guardian = config.guardian.clone();
+        config.guardian = new_guardian.clone();
+        env.storage().instance().set(&DataKey::Config, &config);
+        Self::touch_instance(&env);
+
+        env.events().publish(
+            (Symbol::new(&env, "guardian_changed"),),
+            GuardianChanged { previous_guardian, new_guardian },
+        );
+        Ok(())
+    }
+
+    /// Hands the guardian role to `new_guardian`. Only the current guardian may
+    /// call it, so the role can move without the admin (for example to a rotated
+    /// multisig signer set). The admin keeps `set_guardian` as the recovery path.
+    pub fn update_guardian(env: Env, caller: Address, new_guardian: Address) -> Result<(), GovernanceError> {
+        // Authorize before reading the config, so no state is read for a decision
+        // until the caller has proven who it is.
+        caller.require_auth();
+        let mut config: Config = Self::require_config(&env)?;
+        if caller != config.guardian {
+            return Err(GovernanceError::Unauthorized);
+        }
         let previous_guardian = config.guardian.clone();
         config.guardian = new_guardian.clone();
         env.storage().instance().set(&DataKey::Config, &config);

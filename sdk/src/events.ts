@@ -28,6 +28,7 @@ export const EVENT_TOPICS = [
   'proposal_expired',
   'proposal_vetoed',
   'proposal_action_set',
+  'action_executed',
   'transfer',
   'mint',
   'burn',
@@ -117,6 +118,15 @@ export interface ProposalVetoedEvent {
 export interface ProposalActionSetEvent {
   type: 'proposal_action_set';
   id: bigint;
+  target: string;
+  function: string;
+}
+
+/** One per action `execute()` dispatched; `index` is its position in the proposal. */
+export interface ActionExecutedEvent {
+  type: 'action_executed';
+  id: bigint;
+  index: number;
   target: string;
   function: string;
 }
@@ -273,6 +283,7 @@ export type QuorumEvent =
   | ProposalExpiredEvent
   | ProposalVetoedEvent
   | ProposalActionSetEvent
+  | ActionExecutedEvent
   | TransferEvent
   | MintEvent
   | BurnEvent
@@ -496,6 +507,14 @@ export function decodeEvent(event: RawContractEvent): QuorumEvent | null {
       return {
         type: 'proposal_action_set',
         id: field<bigint>(raw, 'id', topic),
+        target: field<string>(raw, 'target', topic),
+        function: field<string>(raw, 'function', topic),
+      };
+    case 'action_executed':
+      return {
+        type: 'action_executed',
+        id: field<bigint>(raw, 'id', topic),
+        index: field<number>(raw, 'index', topic),
         target: field<string>(raw, 'target', topic),
         function: field<string>(raw, 'function', topic),
       };

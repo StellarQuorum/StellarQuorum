@@ -62,6 +62,15 @@ are marked **BREAKING** below.
 
 ### Added
 
+- **governance:** `execute()` emits an `action_executed` event
+  (`ActionExecuted { id, index, target, function }`) after each action's call
+  succeeds, so indexers can tell which action a callee's events belong to.
+- **governance:** `update_guardian(caller, new_guardian)` lets the current
+  guardian hand the veto role to a new address without the admin. The admin's
+  `set_guardian` remains the recovery path.
+- **governance:** delegation (`delegate`, `undelegate`, `get_delegate`) now has
+  Function Reference entries in the governance README.
+
 - CI: a devcontainer (`.devcontainer/`) installs Node 20, Rust stable with the
   `wasm32-unknown-unknown` target, clippy/rustfmt and the Stellar CLI, then
   installs the workspace dependencies, so a contributor can open the repo in

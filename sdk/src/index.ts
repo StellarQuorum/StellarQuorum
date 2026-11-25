@@ -2,6 +2,7 @@ export { QuorumClient, TESTNET, MAINNET, ProposalStatusTimeoutError, SUPPORTED_C
 export { GovernanceContractError, GOVERNANCE_ERROR_MESSAGES, GovernanceError, TokenError, RpcTimeoutError, TransactionFailedError, contractErrorCode, governanceErrorFromCode, parseGovernanceError, parseTokenError } from './errors.js';
 export { EVENT_TOPICS, EventDecodeError, decodeEvent, decodeEvents } from './events.js';
 export type {
+  ActionExecutedEvent,
   AdminTransferredEvent,
   AdminTransferProposedEvent,
   AdminTransferCancelledEvent,

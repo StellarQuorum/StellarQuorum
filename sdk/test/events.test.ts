@@ -154,6 +154,11 @@ const sample: Array<[string, xdr.ScVal, Record<string, unknown>]> = [
     { type: 'proposal_action_set', id: 7n, target: VOTER, function: 'execute' },
   ],
   [
+    'action_executed',
+    structVal({ id: u64(7n), index: u32(1), target: addr(VOTER), function: str('execute') }),
+    { type: 'action_executed', id: 7n, index: 1, target: VOTER, function: 'execute' },
+  ],
+  [
     'guardian_changed',
     structVal({ previous_guardian: addr(VOTER), new_guardian: addr(VOTER) }),
     { type: 'guardian_changed', previousGuardian: VOTER, newGuardian: VOTER },
