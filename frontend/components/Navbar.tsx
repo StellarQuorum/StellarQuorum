@@ -24,6 +24,13 @@ export default function Navbar() {
           <Link href="/delegation" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">Delegation</Link>
           <Link href="/staking" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">Staking</Link>
           <Link href="/admin" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">Admin</Link>
+          <Link
+            href="/analytics"
+            aria-current={pathname === "/analytics" ? "page" : undefined}
+            className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors"
+          >
+            Analytics
+          </Link>
           <Link href="/settings" className="hover:text-slate-200 hover:underline underline-offset-4 transition-colors">{t("nav.settings")}</Link>
           {address ? (
             <>
