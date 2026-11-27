@@ -1,7 +1,7 @@
 import { createQuorumClient, USE_FIXTURE } from "./config";
 import type { Proposal } from "./types";
 
-// Fixture quorum values use 5% of a 10,000,000-unit circulating supply.
+// The standard fixture quorum of 500,000 represents 5% of this supply.
 export const FIXTURE_CIRCULATING_SUPPLY = 10_000_000;
 
 export interface TrendPoint {
